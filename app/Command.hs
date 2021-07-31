@@ -42,6 +42,9 @@ executeCommand Update Env{..} = liftIO do
         unless pkgsHomeDotGitExists do
           Logger.error $ "'" <> Text.pack pkgsHome <> "' does not contain a git repository.\nPlease move it to another destination and retry."
           exitFailure
+
+        Logger.info "Updating the package set."
+
         (exit, out, err) <- procStrictWithErr (Text.pack gitExe) [ "-C", Text.pack pkgsHome, "pull", "--rebase" ] empty
         unless (exit == ExitSuccess) do
           Logger.error $ "Could not update the package set due to a git error.\n* Standard output:\n"
@@ -59,5 +62,6 @@ executeCommand Update Env{..} = liftIO do
                                                                         <> Text.unlines (mappend "> " <$> Text.lines out) <> "\n* Standard error:\n"
                                                                         <> Text.unlines (mappend "> " <$> Text.lines err)
           exitFailure
-      pure ()
+
+        Logger.info "Package set initialized!"
 executeCommand _ _ = pure ()

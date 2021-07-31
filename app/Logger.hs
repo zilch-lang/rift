@@ -11,6 +11,7 @@ import qualified Data.Text.IO as Text
 import qualified Data.Text as Text
 import qualified Data.List as List
 import Data.Bifunctor (second)
+import System.IO (stderr)
 
 type Logger m = MonadIO m
 
@@ -22,7 +23,7 @@ error = Logger.log ANSI.Red    "ERROR"
 log :: Logger m => ANSI.Color -> Text -> Text -> m ()
 log color prefix msg = liftIO do
   ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Dull color]
-  Text.putStrLn $ "[" <> prefix <> "] " <> prefixAllLinesButFirstWith "|" (Text.length prefix + 1) msg
+  Text.hPutStrLn stderr $ "[" <> prefix <> "] " <> prefixAllLinesButFirstWith "|" (Text.length prefix + 1) msg
   ANSI.setSGR [ANSI.Reset]
   where
     prefixAllLinesButFirstWith linePrefix leftMargin =

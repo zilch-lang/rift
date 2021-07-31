@@ -1,4 +1,4 @@
-module Environment.TH where
+module Rift.Environment.TH where
 
 import Language.Haskell.TH.Quote (quoteFile, QuasiQuoter)
 import Text.RawString.QQ (r)

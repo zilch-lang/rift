@@ -1,35 +1,27 @@
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
 
-module Command where
+module Rift.Commands.Impl.UpdatePackageSet (updatePackageSetCommand) where
 
 import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 
 import qualified Data.Text as Text
 
-import Environment
+import Rift.Environment (Environment(..))
+import qualified Rift.Logger as Logger
 
-import qualified Logger
-
-import System.Directory (findExecutable, createDirectoryIfMissing, doesPathExist, doesDirectoryExist)
+import System.Directory (findExecutable, doesPathExist, doesDirectoryExist, createDirectoryIfMissing)
 import System.Exit (exitFailure)
 import System.FilePath ((</>))
 
 import Turtle (procStrictWithErr, ExitCode(..), empty)
 
-type CommandExecutor m = (MonadIO m)
 
-
-data Command
-  = Update
-
-
-executeCommand :: CommandExecutor m => Command -> Environment -> m ()
-executeCommand Update Env{..} = liftIO do
+updatePackageSetCommand :: MonadIO m => Environment -> m ()
+updatePackageSetCommand Env{..} = liftIO do
   findExecutable "git" >>= \ case
     Nothing     -> do
       Logger.error "Executable 'git' not found in PATH."
@@ -64,4 +56,3 @@ executeCommand Update Env{..} = liftIO do
           exitFailure
 
         Logger.info "Package set initialized!"
-executeCommand _ _ = pure ()

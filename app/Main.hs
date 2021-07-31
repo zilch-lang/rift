@@ -2,17 +2,17 @@
 
 module Main where
 
-import Command (executeCommand, Command(..))
-import Environment
-import Flags
+import Rift.CLI (parseCLI)
+import Rift.Commands (executeCommand, Command(Package), PkgCommand(UpdatePackageSet))
+import Rift.Environment (setupEnv)
 
 main :: IO ()
 main = do
   cmd <- parseCLI
 
   env <- setupEnv case cmd of
-    Update -> False
-    _      -> True
+    Package UpdatePackageSet -> False
+    _                        -> True
 
   executeCommand cmd env
 

@@ -6,7 +6,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE NamedFieldPuns #-}
 
-module Environment (setupEnv, Environment(..)) where
+module Rift.Environment.Setup (setupEnv) where
 
 import Data.Maybe (fromMaybe)
 
@@ -15,9 +15,9 @@ import Control.Monad.IO.Class (MonadIO(..))
 
 import qualified Data.Text as Text
 
-import Environment.TH (rf)
-
-import qualified Logger
+import Rift.Environment.Def (Environment(..))
+import Rift.Environment.TH (rf)
+import qualified Rift.Logger as Logger
 
 import System.Directory (createDirectoryIfMissing, getXdgDirectory, XdgDirectory(XdgData), doesPathExist, findExecutable)
 import System.Environment (getExecutablePath)
@@ -26,14 +26,6 @@ import qualified System.Envy as E
 import System.Exit (exitFailure)
 import System.FilePath ((</>), takeDirectory)
 import System.IO (hPrint, stderr)
-
-
-data Environment
-  = Env
-  { riftHome    :: FilePath
-  , pkgsHome    :: FilePath
-  , dhallToJson :: FilePath
-  }
 
 
 type Setup m = (MonadIO m)
@@ -60,7 +52,7 @@ setupEnv warnAboutPkgsSetNotInit = liftIO do
 
       dhallJsonExe <- findExecutable "dhall-to-json" >>= \ case
         Nothing -> do
-          Logger.error "Executable `dhall-to-json` not found in PATH.\nSee <https://github.com/dhall-lang/dhall-haskell/tree/master/dhall-json#readme> for instructions on how to install it."
+          Logger.error "Executable 'dhall-to-json' not found in PATH.\nSee <https://github.com/dhall-lang/dhall-haskell/tree/master/dhall-json#readme> for instructions on how to install it."
           exitFailure
         Just p  -> pure p
 
@@ -79,7 +71,7 @@ writeDhallConfigToRiftCfg cfgPath = liftIO do
 
   alreadyExists <- doesPathExist cfgPath
   unless alreadyExists do
-    Logger.info $ "Creating default configuration file at path '" <> Text.pack cfgPath <> "'.\nThis file can be referenced using `env:RIFT_CFG` in your project configuration."
+    Logger.info $ "Creating default configuration file at path '" <> Text.pack cfgPath <> "'.\nThis file can be referenced using 'env:RIFT_CFG' in your project configuration."
 
     createDirectoryIfMissing True (takeDirectory cfgPath)
     writeFile cfgPath defaultDhallConfig

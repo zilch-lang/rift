@@ -25,11 +25,20 @@ source-repository head
 executable rift
   main-is: Main.hs
   other-modules:
-      Command
-      Environment
-      Environment.TH
-      Flags
-      Logger
+      Rift.CLI
+      Rift.CLI.Global
+      Rift.CLI.Package
+      Rift.CLI.Package.Update
+      Rift.CLI.Project
+      Rift.Commands
+      Rift.Commands.Def
+      Rift.Commands.Executor
+      Rift.Commands.Impl.UpdatePackageSet
+      Rift.Environment
+      Rift.Environment.Def
+      Rift.Environment.Setup
+      Rift.Environment.TH
+      Rift.Logger
       Paths_rift
   hs-source-dirs:
       app

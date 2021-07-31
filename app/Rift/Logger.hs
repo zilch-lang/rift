@@ -2,23 +2,25 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Logger (info, warn, Logger.error) where
+module Rift.Logger (info, warn, Rift.Logger.error) where
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import System.Console.ANSI as ANSI
-import Data.Text (Text)
-import qualified Data.Text.IO as Text
-import qualified Data.Text as Text
-import qualified Data.List as List
+
 import Data.Bifunctor (second)
+import qualified Data.List as List
+import Data.Text (Text)
+import qualified Data.Text as Text
+import qualified Data.Text.IO as Text
+
+import System.Console.ANSI as ANSI
 import System.IO (stderr)
 
 type Logger m = MonadIO m
 
 info, warn, error :: Logger m => Text -> m ()
-info  = Logger.log ANSI.Green  "INFO "
-warn  = Logger.log ANSI.Yellow "WARN "
-error = Logger.log ANSI.Red    "ERROR"
+info  = Rift.Logger.log ANSI.Green  "INFO "
+warn  = Rift.Logger.log ANSI.Yellow "WARN "
+error = Rift.Logger.log ANSI.Red    "ERROR"
 
 log :: Logger m => ANSI.Color -> Text -> Text -> m ()
 log color prefix msg = liftIO do

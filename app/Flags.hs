@@ -17,7 +17,7 @@ parseCLI = customExecParser preferences opts
 
 cli :: Parser Command
 cli = hsubparser $
-  fold [ command "update-set" $ info updateSetCommand $ fullDesc <> progDesc "Updates the package set to the latest version referenced in your `project.dhall`" ]
+  fold [ command "update" $ info updateSetCommand $ fullDesc <> progDesc "Updates the package set to the latest version referenced in your `project.dhall`" ]
 
 ------------------------------------
 

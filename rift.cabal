@@ -42,7 +42,7 @@ executable rift
       Paths_rift
   hs-source-dirs:
       app
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Wextra -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       ansi-terminal
     , base >=4.7 && <5

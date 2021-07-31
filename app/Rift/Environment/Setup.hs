@@ -6,6 +6,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE NamedFieldPuns #-}
 
+{-# OPTIONS -Wno-name-shadowing #-}
+
 module Rift.Environment.Setup (setupEnv) where
 
 import Data.Maybe (fromMaybe)
@@ -25,7 +27,6 @@ import System.Envy ((.=))
 import qualified System.Envy as E
 import System.Exit (exitFailure)
 import System.FilePath ((</>), takeDirectory)
-import System.IO (hPrint, stderr)
 
 
 type Setup m = (MonadIO m)

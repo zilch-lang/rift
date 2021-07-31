@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 
 {-# OPTIONS -Wno-overlapping-patterns #-}
+{-# OPTIONS -Wno-unused-matches #-}
 
 module Rift.Commands.Def where
 
@@ -10,7 +11,6 @@ import Control.Monad.IO.Class (MonadIO)
 
 import Rift.Commands.Executor
 import Rift.Commands.Impl.UpdatePackageSet (updatePackageSetCommand)
-import Rift.Environment (Environment(..))
 
 -- | A basic command is either a command on packages or a command on projects.
 data Command

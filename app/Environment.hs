@@ -2,6 +2,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE ConstraintKinds #-}
 
 module Environment (setupEnv) where
 
@@ -11,14 +12,17 @@ import Control.Monad (unless)
 
 import Environment.TH (rf)
 
-import System.Directory
+import System.Directory (createDirectoryIfMissing, getXdgDirectory, XdgDirectory(XdgData), doesPathExist)
 import System.Envy ((.=))
 import qualified System.Envy as E
 import System.FilePath ((</>), takeDirectory)
 import System.IO (hPrint, stderr)
+import Control.Monad.IO.Class (MonadIO(..))
 
-setupEnv :: IO ()
-setupEnv = do
+type Setup m = (MonadIO m)
+
+setupEnv :: Setup m => m ()
+setupEnv = liftIO do
   E.runEnv (E.envMaybe @FilePath "RIFT_HOME") >>= \ case
     Left err       -> hPrint stderr err
     Right riftHome -> do
@@ -34,11 +38,11 @@ setupEnv = do
           writeDhallConfigToRiftCfg $ fromMaybe configPath riftCfg
 
 
-writeDhallConfigToRiftCfg :: FilePath -> IO ()
-writeDhallConfigToRiftCfg cfgPath = do
+writeDhallConfigToRiftCfg :: Setup m => FilePath -> m ()
+writeDhallConfigToRiftCfg cfgPath = liftIO do
   let defaultDhallConfig = [rf|defaultConfig.dhall|]
 
   alreadyExists <- doesPathExist cfgPath
   unless alreadyExists do
-    createDirectory (takeDirectory cfgPath)
+    createDirectoryIfMissing True (takeDirectory cfgPath)
     writeFile cfgPath defaultDhallConfig

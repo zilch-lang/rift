@@ -53,4 +53,5 @@ executable rift
     , raw-strings-qq
     , template-haskell
     , text
+    , turtle
   default-language: Haskell2010

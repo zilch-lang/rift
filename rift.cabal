@@ -34,6 +34,7 @@ library
 executable rift
   main-is: Main.hs
   other-modules:
+      Command
       Environment
       Environment.TH
       Flags

@@ -4,8 +4,9 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
-module Environment (setupEnv) where
+module Environment (setupEnv, Environment(..)) where
 
 import Data.Maybe (fromMaybe)
 
@@ -26,9 +27,17 @@ import System.Exit (exitFailure)
 import System.FilePath ((</>), takeDirectory)
 import System.IO (hPrint, stderr)
 
+
+data Environment
+  = Env
+  { riftHome    :: FilePath
+  , dhallToJson :: FilePath
+  }
+
+
 type Setup m = (MonadIO m)
 
-setupEnv :: Setup m => Bool -> m FilePath
+setupEnv :: Setup m => Bool -> m Environment
 setupEnv warnAboutPkgsSetNotInit = liftIO do
   E.runEnv (E.envMaybe @FilePath "RIFT_HOME") >>= \ case
     Left err       -> do
@@ -41,7 +50,9 @@ setupEnv warnAboutPkgsSetNotInit = liftIO do
       E.runEnv (E.envMaybe @FilePath "RIFT_CFG") >>= \ case
         Left _  -> do
           E.setEnvironment (E.makeEnv [ "RIFT_CFG" .= configPath ]) >>= \ case
-            Left err -> hPrint stderr err
+            Left err -> do
+              Logger.error $ Text.pack err
+              exitFailure
             Right _  -> writeDhallConfigToRiftCfg configPath
         Right riftCfg -> do
           writeDhallConfigToRiftCfg $ fromMaybe configPath riftCfg
@@ -59,7 +70,7 @@ setupEnv warnAboutPkgsSetNotInit = liftIO do
           riftExe <- getExecutablePath
           Logger.warn $ "Package set not initialized.\nPlease run `" <> Text.pack riftExe <> " update`."
 
-      pure dhallJsonExe
+      pure $ Env { riftHome, dhallToJson = dhallJsonExe }
 
 writeDhallConfigToRiftCfg :: Setup m => FilePath -> m ()
 writeDhallConfigToRiftCfg cfgPath = liftIO do

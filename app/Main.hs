@@ -2,6 +2,7 @@
 
 module Main where
 
+import Command (executeCommand, Command(..))
 import Environment
 import Flags
 
@@ -9,8 +10,10 @@ main :: IO ()
 main = do
   cmd <- parseCLI
 
-  dhallJsonExe <- setupEnv case cmd of
-    UpdateSet -> False
-    _         -> True
+  env <- setupEnv case cmd of
+    Update -> False
+    _      -> True
+
+  executeCommand cmd env
 
   pure ()

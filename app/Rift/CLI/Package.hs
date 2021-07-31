@@ -8,6 +8,15 @@ import Rift.CLI.Package.Update (packageUpdateCLI)
 import Rift.Commands (Command(..))
 
 
+-- | The package CLI contains:
+--
+--   * Subcommands:
+--
+--     * @update@: Update the current copy of the package set to the latest version available
+--
+--   * Flags & options:
+--
+--     * @-h@/@--help@: Show the help menu of the subcommand
 packageCLI :: [Mod CommandFields Command]
 packageCLI =
   let cmd name meta = command name $ info (hsubparser $ fold packageSubCommands) $ fullDesc <> progDesc meta

@@ -11,6 +11,17 @@ import Rift.CLI.Project (projectCLI)
 import Rift.Commands (Command(..))
 
 
+-- | The global CLI contains:
+--
+--   * Subcommands:
+--
+--     * @package@/@pkg@: Various commands for manipulating the package set
+--
+--     * @project@: A group of commands to manipulate the current project
+--
+--   * Flags & options:
+--
+--     * @-h@/@--help@: Shows the global help menu
 globalCLI :: MonadIO m => m Command
 globalCLI = liftIO $ customExecParser preferences opts
   where

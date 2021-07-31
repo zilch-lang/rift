@@ -17,6 +17,7 @@ import System.IO (stderr)
 
 type Logger m = MonadIO m
 
+-- | Log a colored, prefixed message to the standard error.
 info, warn, error :: Logger m => Text -> m ()
 info  = Rift.Logger.log ANSI.Green  "INFO "
 warn  = Rift.Logger.log ANSI.Yellow "WARN "

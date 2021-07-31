@@ -30,6 +30,17 @@ import System.IO (hPrint, stderr)
 
 type Setup m = (MonadIO m)
 
+-- | Setups the environment needed for the project manager to correctly work:
+--
+--   * Fetches the @RIFT_HOME@ environment variable which defaults to @$XDG_DATA_HOME/rift@
+--
+--   * Sets the @RIFT_CFG@ environment variable to @$RIFT_HOME/config.dhall@ to allow using @env:RIFT_CFG@ in the project configuration file
+--
+--   * Writes the config template (which contains useful types and functions for the definition of a project) to @$RIFT_CFG$ if the file does not already exist
+--
+--   * Checks whether the @dhall-to-json@ executable is in the PATH or not
+--
+--   * Warns the user if the package set has not been initialized already (unless @warnAboutPkgsSetNotInit@ is set to @False@)
 setupEnv :: Setup m => Bool -> m Environment
 setupEnv warnAboutPkgsSetNotInit = liftIO do
   E.runEnv (E.envMaybe @FilePath "RIFT_HOME") >>= \ case
@@ -65,6 +76,7 @@ setupEnv warnAboutPkgsSetNotInit = liftIO do
 
       pure $ Env { riftHome, pkgsHome = riftHome </> "pkgs", dhallToJson = dhallJsonExe }
 
+-- | Writes the default template to the given configuration path.
 writeDhallConfigToRiftCfg :: Setup m => FilePath -> m ()
 writeDhallConfigToRiftCfg cfgPath = liftIO do
   let defaultDhallConfig = [rf|defaultConfig.dhall|]

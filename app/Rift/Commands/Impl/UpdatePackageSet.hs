@@ -20,6 +20,27 @@ import System.FilePath ((</>))
 import Turtle (procStrictWithErr, ExitCode(..), empty)
 
 
+-- | Updates the package set by following this simple algorithm:
+--
+--   * Fetch the path to the @git@ command, error out if not found in the PATH
+--
+--   * Check if @$RIFT_HOME/pkgs@ exists
+--
+--   * If yes:
+--
+--     * Check whether @$RIFT_HOME/pkgs/.git@ is an existing directory
+--
+--     * If yes:
+--
+--       * Pull & rebase the package set repository and report any error
+--
+--     * If no:
+--
+--       * Error out: not a git repository
+--
+--   * If no:
+--
+--     * Clone the repository to @$RIFT_HOME/pkgs@ and report any error
 updatePackageSetCommand :: MonadIO m => Environment -> m ()
 updatePackageSetCommand Env{..} = liftIO do
   findExecutable "git" >>= \ case

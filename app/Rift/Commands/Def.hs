@@ -12,13 +12,16 @@ import Rift.Commands.Executor
 import Rift.Commands.Impl.UpdatePackageSet (updatePackageSetCommand)
 import Rift.Environment (Environment(..))
 
+-- | A basic command is either a command on packages or a command on projects.
 data Command
   = Package PkgCommand
   | Project ProjCommand
 
+-- | A command acting on the package set.
 data PkgCommand
-  = UpdatePackageSet
+  = UpdatePackageSet -- ^ Updates the package set to the latest version available on the github repository.
 
+-- | A command acting on the current project.
 data ProjCommand
 
 

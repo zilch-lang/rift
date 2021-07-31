@@ -37,16 +37,19 @@ executable rift
       Environment
       Environment.TH
       Flags
+      Logger
       Paths_rift
   hs-source-dirs:
       app
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.7 && <5
+      ansi-terminal
+    , base >=4.7 && <5
     , directory
     , envy
     , filepath
     , optparse-applicative
     , raw-strings-qq
     , template-haskell
+    , text
   default-language: Haskell2010

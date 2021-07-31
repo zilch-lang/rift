@@ -3,21 +3,26 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Environment (setupEnv) where
 
 import Data.Maybe (fromMaybe)
 
 import Control.Monad (unless)
+import Control.Monad.IO.Class (MonadIO(..))
+
+import qualified Data.Text as Text
 
 import Environment.TH (rf)
+
+import qualified Logger
 
 import System.Directory (createDirectoryIfMissing, getXdgDirectory, XdgDirectory(XdgData), doesPathExist)
 import System.Envy ((.=))
 import qualified System.Envy as E
 import System.FilePath ((</>), takeDirectory)
 import System.IO (hPrint, stderr)
-import Control.Monad.IO.Class (MonadIO(..))
 
 type Setup m = (MonadIO m)
 
@@ -44,5 +49,7 @@ writeDhallConfigToRiftCfg cfgPath = liftIO do
 
   alreadyExists <- doesPathExist cfgPath
   unless alreadyExists do
+    Logger.info $ "Creating default configuration file at path '" <> Text.pack cfgPath <> "'.\nThis file can be referenced using `env:RIFT_CFG` in your project configuration."
+
     createDirectoryIfMissing True (takeDirectory cfgPath)
     writeFile cfgPath defaultDhallConfig

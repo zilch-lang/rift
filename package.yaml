@@ -39,3 +39,5 @@ executables:
     - filepath
     - raw-strings-qq
     - template-haskell
+    - ansi-terminal
+    - text

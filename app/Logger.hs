@@ -2,7 +2,7 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Logger (info) where
+module Logger (info, warn, Logger.error) where
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import System.Console.ANSI as ANSI
@@ -10,13 +10,14 @@ import Data.Text (Text)
 import qualified Data.Text.IO as Text
 import qualified Data.Text as Text
 import qualified Data.List as List
-import Data.Function ((&))
 import Data.Bifunctor (second)
 
 type Logger m = MonadIO m
 
-info :: Logger m => Text -> m ()
-info = Logger.log ANSI.Blue "INFO "
+info, warn, error :: Logger m => Text -> m ()
+info  = Logger.log ANSI.Green  "INFO "
+warn  = Logger.log ANSI.Yellow "WARN "
+error = Logger.log ANSI.Red    "ERROR"
 
 log :: Logger m => ANSI.Color -> Text -> Text -> m ()
 log color prefix msg = liftIO do

@@ -1,3 +1,5 @@
+{-# LANGUAGE BlockArguments #-}
+
 module Main where
 
 import Environment
@@ -7,6 +9,8 @@ main :: IO ()
 main = do
   cmd <- parseCLI
 
-  setupEnv
+  dhallJsonExe <- setupEnv case cmd of
+    UpdateSet -> False
+    _         -> True
 
   pure ()

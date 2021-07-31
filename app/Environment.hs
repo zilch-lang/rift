@@ -31,6 +31,7 @@ import System.IO (hPrint, stderr)
 data Environment
   = Env
   { riftHome    :: FilePath
+  , pkgsHome    :: FilePath
   , dhallToJson :: FilePath
   }
 
@@ -70,7 +71,7 @@ setupEnv warnAboutPkgsSetNotInit = liftIO do
           riftExe <- getExecutablePath
           Logger.warn $ "Package set not initialized.\nPlease run `" <> Text.pack riftExe <> " update`."
 
-      pure $ Env { riftHome, dhallToJson = dhallJsonExe }
+      pure $ Env { riftHome, pkgsHome = riftHome </> "pkgs", dhallToJson = dhallJsonExe }
 
 writeDhallConfigToRiftCfg :: Setup m => FilePath -> m ()
 writeDhallConfigToRiftCfg cfgPath = liftIO do

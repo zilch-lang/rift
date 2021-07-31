@@ -22,9 +22,9 @@ error = Logger.log ANSI.Red    "ERROR"
 
 log :: Logger m => ANSI.Color -> Text -> Text -> m ()
 log color prefix msg = liftIO do
-  ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Dull color]
+  ANSI.hSetSGR stderr [ANSI.SetColor ANSI.Foreground ANSI.Dull color]
   Text.hPutStrLn stderr $ "[" <> prefix <> "] " <> prefixAllLinesButFirstWith "|" (Text.length prefix + 1) msg
-  ANSI.setSGR [ANSI.Reset]
+  ANSI.hSetSGR stderr [ANSI.Reset]
   where
     prefixAllLinesButFirstWith linePrefix leftMargin =
       maybe "" (Text.unlines

@@ -22,15 +22,6 @@ source-repository head
   type: git
   location: https://github.com/zilch-lang/rift
 
-library
-  other-modules:
-      Paths_rift
-  hs-source-dirs:
-      src
-  build-depends:
-      base >=4.7 && <5
-  default-language: Haskell2010
-
 executable rift
   main-is: Main.hs
   other-modules:

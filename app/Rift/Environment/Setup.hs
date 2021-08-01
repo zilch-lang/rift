@@ -22,7 +22,6 @@ import Rift.Environment.TH (rf)
 import qualified Rift.Logger as Logger
 
 import System.Directory (createDirectoryIfMissing, getXdgDirectory, XdgDirectory(XdgData), doesPathExist, findExecutable)
-import System.Environment (getExecutablePath)
 import System.Envy ((.=))
 import qualified System.Envy as E
 import System.Exit (exitFailure)
@@ -72,8 +71,7 @@ setupEnv warnAboutPkgsSetNotInit = liftIO do
         let packageSetPath = riftHome </> "pkgs"
         exists <- doesPathExist packageSetPath
         unless exists do
-          riftExe <- getExecutablePath
-          Logger.warn $ "Package set not initialized.\nPlease run `" <> Text.pack riftExe <> " package update`."
+          Logger.warn $ "Package set not initialized.\nPlease run 'rift package update'."
 
       pure $ Env { riftHome, pkgsHome = riftHome </> "pkgs", dhallToJson = dhallJsonExe }
 

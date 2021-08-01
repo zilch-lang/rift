@@ -73,7 +73,7 @@ setupEnv warnAboutPkgsSetNotInit = liftIO do
         exists <- doesPathExist packageSetPath
         unless exists do
           riftExe <- getExecutablePath
-          Logger.warn $ "Package set not initialized.\nPlease run `" <> Text.pack riftExe <> " update`."
+          Logger.warn $ "Package set not initialized.\nPlease run `" <> Text.pack riftExe <> " package update`."
 
       pure $ Env { riftHome, pkgsHome = riftHome </> "pkgs", dhallToJson = dhallJsonExe }
 

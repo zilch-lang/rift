@@ -2,7 +2,7 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Rift.Logger (info, warn, Rift.Logger.error) where
+module Rift.Logger (info, warn, Rift.Logger.error, debug) where
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
 
@@ -18,10 +18,11 @@ import System.IO (stderr)
 type Logger m = MonadIO m
 
 -- | Log a colored, prefixed message to the standard error.
-info, warn, error :: Logger m => Text -> m ()
+info, warn, error, debug :: Logger m => Text -> m ()
 info  = Rift.Logger.log ANSI.Green  "INFO "
 warn  = Rift.Logger.log ANSI.Yellow "WARN "
 error = Rift.Logger.log ANSI.Red    "ERROR"
+debug = Rift.Logger.log ANSI.Blue   "DEBUG"
 
 log :: Logger m => ANSI.Color -> Text -> Text -> m ()
 log color prefix msg = liftIO do

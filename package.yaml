@@ -45,3 +45,4 @@ executables:
     - turtle
     - aeson
     - bytestring
+    - fsnotify

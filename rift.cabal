@@ -39,6 +39,7 @@ executable rift
       Rift.Environment.Def
       Rift.Environment.Setup
       Rift.Environment.TH
+      Rift.Internal.LockFile
       Rift.Logger
       Paths_rift
   hs-source-dirs:
@@ -52,6 +53,7 @@ executable rift
     , directory
     , envy
     , filepath
+    , fsnotify
     , optparse-applicative
     , raw-strings-qq
     , template-haskell

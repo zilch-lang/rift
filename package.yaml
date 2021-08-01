@@ -43,3 +43,5 @@ executables:
     - ansi-terminal
     - text
     - turtle
+    - aeson
+    - bytestring

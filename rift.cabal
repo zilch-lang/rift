@@ -34,6 +34,7 @@ executable rift
       Rift.Commands.Def
       Rift.Commands.Executor
       Rift.Commands.Impl.UpdatePackageSet
+      Rift.Config.PackageSet
       Rift.Environment
       Rift.Environment.Def
       Rift.Environment.Setup
@@ -44,8 +45,10 @@ executable rift
       app
   ghc-options: -Wall -Wextra -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      ansi-terminal
+      aeson
+    , ansi-terminal
     , base >=4.7 && <5
+    , bytestring
     , directory
     , envy
     , filepath

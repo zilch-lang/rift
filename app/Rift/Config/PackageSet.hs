@@ -86,7 +86,7 @@ snapshotFromDhallFile :: MonadIO m => FilePath -> Environment -> m Snapshot
 snapshotFromDhallFile dhallFile Env{..} = do
   (exit, out, err) <- procStrictWithErr (Text.pack dhallToJson) [ "--compact", "--preserve-null", "--file", Text.pack dhallFile ] empty
   unless (exit == ExitSuccess) do
-    Logger.error $ "'dhall-to-json' exited with a non-0 exit status.\n* Standard output:\n"
+    Logger.error $ "'dhall-to-json' exited with a non 0 exit status.\n* Standard output:\n"
                                                                         <> Text.unlines (mappend "> " <$> Text.lines out) <> "\n* Standard error:\n"
                                                                         <> Text.unlines (mappend "> " <$> Text.lines err)
     liftIO exitFailure

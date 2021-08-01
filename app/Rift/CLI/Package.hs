@@ -5,6 +5,7 @@ import Data.Foldable (fold)
 import Options.Applicative
 
 import Rift.CLI.Package.Update (packageUpdateCLI)
+import Rift.CLI.Package.Search (packageSearchCLI)
 import Rift.Commands (Command(..))
 
 
@@ -26,4 +27,5 @@ packageCLI =
     packageSubCommands =
       let cmd name parser = command name $ Package <$> parser
       in [ cmd "update" packageUpdateCLI
+         , cmd "search" packageSearchCLI
          ]

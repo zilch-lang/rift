@@ -46,3 +46,4 @@ executables:
     - aeson
     - bytestring
     - fsnotify
+    - unordered-containers

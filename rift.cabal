@@ -28,11 +28,13 @@ executable rift
       Rift.CLI
       Rift.CLI.Global
       Rift.CLI.Package
+      Rift.CLI.Package.Search
       Rift.CLI.Package.Update
       Rift.CLI.Project
       Rift.Commands
       Rift.Commands.Def
       Rift.Commands.Executor
+      Rift.Commands.Impl.SearchPackage
       Rift.Commands.Impl.UpdatePackageSet
       Rift.Config.PackageSet
       Rift.Environment
@@ -59,4 +61,5 @@ executable rift
     , template-haskell
     , text
     , turtle
+    , unordered-containers
   default-language: Haskell2010

@@ -78,7 +78,7 @@ setupEnv warnAboutPkgsSetNotInit = liftIO do
 -- | Writes the default template to the given configuration path.
 writeDhallConfigToRiftCfg :: Setup m => FilePath -> m ()
 writeDhallConfigToRiftCfg cfgPath = liftIO do
-  let defaultDhallConfig = [rf|defaultConfig.dhall|]
+  let defaultDhallConfig = [rf|default-config.dhall|]
 
   alreadyExists <- doesPathExist cfgPath
   unless alreadyExists do

@@ -12,6 +12,7 @@ import Control.Monad.IO.Class (MonadIO)
 import Data.Text (Text)
 
 import Rift.Commands.Executor
+import Rift.Commands.Impl.NewProject (newProjectCommand)
 import Rift.Commands.Impl.SearchPackage (searchPackageCommand)
 import Rift.Commands.Impl.UpdatePackageSet (updatePackageSetCommand)
 
@@ -48,4 +49,5 @@ instance (MonadIO m) => CommandExecutor PkgCommand m where
   executeCommand _ e = error "not yet implemented"
 
 instance (MonadIO m) => CommandExecutor ProjCommand m where
+  executeCommand (NewProject p n t f) e = newProjectCommand p n t f e
   executeCommand _ e = error "not yet implemented"

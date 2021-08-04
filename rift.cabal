@@ -37,6 +37,7 @@ executable rift
       Rift.Commands.Impl.SearchPackage
       Rift.Commands.Impl.UpdatePackageSet
       Rift.Config.PackageSet
+      Rift.Config.Template
       Rift.Environment
       Rift.Environment.Def
       Rift.Environment.Setup

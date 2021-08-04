@@ -30,6 +30,12 @@ data PkgCommand
 
 -- | A command acting on the current project.
 data ProjCommand
+  = -- | Initializes a new project in the given directory.
+    NewProject
+      FilePath                  -- ^ Where to initialize the project
+      (Maybe Text)              -- ^ The name of the project
+      (Maybe Text)              -- ^ The template used for project generation
+      Bool                      -- ^ Should we force project creation?
 
 
 instance (MonadIO m) => CommandExecutor Command m where

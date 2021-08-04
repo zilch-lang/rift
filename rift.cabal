@@ -32,6 +32,7 @@ executable rift
       Rift.CLI.Package.Search
       Rift.CLI.Package.Update
       Rift.CLI.Project
+      Rift.CLI.Project.New
       Rift.Commands
       Rift.Commands.Def
       Rift.Commands.Executor

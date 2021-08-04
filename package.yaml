@@ -47,3 +47,4 @@ executables:
     - bytestring
     - fsnotify
     - unordered-containers
+    - hashable

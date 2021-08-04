@@ -3,6 +3,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 {-# OPTIONS -Wno-name-shadowing #-}
 
@@ -14,21 +15,26 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 
 import Data.Aeson
 import qualified Data.ByteString.Lazy as ByteString
+import Data.Hashable (Hashable(..))
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text (encodeUtf8)
+
+import GHC.Generics (Generic)
 
 import Rift.Environment (Environment(..))
 import qualified Rift.Logger as Logger
 
 import System.Exit (exitFailure)
 
+import Text.Read (readMaybe)
+
 import Turtle (procStrictWithErr, ExitCode(..), empty)
 
 
 data Snapshot
   = Snapshot
-  { name        :: Text
+  { name        :: LTSVersion
   , gzcVersion  :: Text
   , packageSet  :: [Package]
   }
@@ -56,6 +62,30 @@ data PackageSource
   , sha256      :: Text
   }
   deriving (Show)
+
+data LTSVersion
+  = LTS Int Int
+  | Unstable
+  deriving (Eq, Ord, Generic)
+
+-- | Read an LTS version which is either @unstable@ or of the form @lts-<major>.<minor>@.
+readLTSVersion :: Text -> Maybe LTSVersion
+readLTSVersion "unstable" = Just Unstable
+readLTSVersion v          =
+  case Text.splitOn "-" v of
+    [_, ver] -> case readMaybe @Int . Text.unpack <$> Text.splitOn "." ver of
+      [Just major, Just minor] -> Just $ LTS major minor
+      _                        -> Nothing
+    _        -> Nothing
+
+instance Hashable LTSVersion
+
+instance Show LTSVersion where
+  show Unstable = "unstable"
+  show (LTS x y) = "lts-" <> show x <> "." <> show y
+
+instance FromJSON LTSVersion where
+  parseJSON v = maybe (fail "Invalid LTS version") pure . readLTSVersion =<< parseJSON @Text v
 
 
 instance FromJSON Snapshot where

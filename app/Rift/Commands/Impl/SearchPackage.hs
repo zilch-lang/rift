@@ -13,11 +13,13 @@ import Control.Exception (finally, catch)
 import Control.Monad (unless, forM, when, forM_)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 
+import Data.Bifunctor (first)
 import Data.Foldable (foldl')
-import Data.Function (on)
+import Data.Function ((&))
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.List as List
+import Data.Maybe (isJust)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
@@ -62,7 +64,7 @@ searchPackageCommand pkgName env@Env{..} = do
                 exitFailure
 
         allVersionsInAllLTSs <- (HashMap.toList <$> queryAllTagsForPackage gitExe (allTags <> ["unstable"])) `finally` restoreToUnstable
-        let sortedPackagesOnLTS = sortOnBy fst sortLTS allVersionsInAllLTSs
+        let sortedPackagesOnLTS = (first readLTSVersion <$> allVersionsInAllLTSs) & filter (isJust . fst) & List.sort
 
         case sortedPackagesOnLTS of
           [] -> do
@@ -71,7 +73,7 @@ searchPackageCommand pkgName env@Env{..} = do
             Text.hPutStr stdout pkgName
             ANSI.hSetSGR stdout [ANSI.Reset]
             Text.hPutStrLn stdout " not found in the current package set."
-            Text.hPutStrLn stdout $ "Maybe you want to update it with 'rift package update'?"
+            Text.hPutStrLn stdout "Maybe you want to update it with 'rift package update'?"
           _ -> do
             let tmpPackages = HashMap.fromList $ sortedPackagesOnLTS >>= \ (lts, vs) -> vs <&> \ (version, broken) -> (version, (lts, broken))
                 keysInOrder = reverse $ fst <$> sortedPackagesOnLTS
@@ -95,8 +97,6 @@ searchPackageCommand pkgName env@Env{..} = do
                   Text.hPutStr stdout "- versions "
                   outputVersions stdout vs
               outputLTS stdout k
-            
-            pure ()
   where
     queryAllTagsForPackage gitExe tags = do
       foldl' (HashMap.unionWith (<>)) mempty <$> forM tags \ t -> do
@@ -111,16 +111,6 @@ searchPackageCommand pkgName env@Env{..} = do
               let versionsOfPackageInLTS = filter (\ Pkg{..} -> pkgName == name) packageSet
               pure $ HashMap.fromListWith (<>) $ versionsOfPackageInLTS <&> \ Pkg{..} -> (t, [(version, broken)])
 
-    sortOnBy select order = List.sortBy (order `on` select)
-
-    sortLTS = compare `on` readVersionFromText
-
-    readVersionFromText "unstable" = Unstable
-    readVersionFromText v =
-      let [_, ver]       = Text.splitOn "-" v
-          [major, minor] = read @Int . Text.unpack <$> Text.splitOn "." ver
-      in LTS major minor
-
     _2 ~(_, x, _) = x
 
     outputVersion handle version isBroken = do
@@ -133,7 +123,7 @@ searchPackageCommand pkgName env@Env{..} = do
     outputLTS handle name = do
       Text.hPutStr handle " in "
       ANSI.hSetSGR handle [ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.Cyan]
-      Text.hPutStr handle name
+      Text.hPutStr handle $ Text.pack (show name)
       ANSI.hSetSGR handle [ANSI.Reset]
       Text.hPutStrLn handle ""
 
@@ -143,12 +133,3 @@ searchPackageCommand pkgName env@Env{..} = do
       outputVersion handle version isBroken
       Text.hPutStr handle ", "
       outputVersions handle vs
-
-data Version
-  = LTS Int Int
-  | Unstable
-  deriving (Eq, Ord)
-
-instance Show Version where
-  show Unstable = "unstable"
-  show (LTS x y) = "lts-" <> show x <> "." <> show y

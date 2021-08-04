@@ -56,6 +56,7 @@ executable rift
     , envy
     , filepath
     , fsnotify
+    , hashable
     , optparse-applicative
     , raw-strings-qq
     , template-haskell

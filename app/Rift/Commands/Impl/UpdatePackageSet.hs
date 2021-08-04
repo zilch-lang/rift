@@ -14,7 +14,7 @@ import Rift.Environment (Environment(..))
 import Rift.Internal.LockFile (withLockFile)
 import qualified Rift.Logger as Logger
 
-import System.Directory (findExecutable, doesPathExist, doesDirectoryExist, createDirectoryIfMissing)
+import System.Directory (doesPathExist, doesDirectoryExist, createDirectoryIfMissing)
 import System.Exit (exitFailure)
 import System.FilePath ((</>))
 
@@ -44,39 +44,34 @@ import Turtle (procStrictWithErr, ExitCode(..), empty)
 --     * Clone the repository to @$RIFT_HOME/pkgs@ and report any error
 updatePackageSetCommand :: MonadIO m => Environment -> m ()
 updatePackageSetCommand Env{..} = do
-  liftIO (findExecutable "git") >>= \ case
-    Nothing     -> do
-      Logger.error "Executable 'git' not found in PATH."
+  pkgsHomeExists <- liftIO $ doesPathExist pkgsHome
+  if pkgsHomeExists
+  then do
+    pkgsHomeDotGitExists <- liftIO $ doesDirectoryExist (pkgsHome </> ".git")
+    unless pkgsHomeDotGitExists do
+      Logger.error $ "'" <> Text.pack pkgsHome <> "' does not contain a git repository.\nPlease move it to another destination and retry."
       liftIO exitFailure
-    Just gitExe -> do
-      pkgsHomeExists <- liftIO $ doesPathExist pkgsHome
-      if pkgsHomeExists
-      then do
-        pkgsHomeDotGitExists <- liftIO $ doesDirectoryExist (pkgsHome </> ".git")
-        unless pkgsHomeDotGitExists do
-          Logger.error $ "'" <> Text.pack pkgsHome <> "' does not contain a git repository.\nPlease move it to another destination and retry."
-          liftIO exitFailure
 
-        liftIO $ withLockFile (riftHome </> "package-set.lock") do
-          Logger.info "Updating the package set."
+    liftIO $ withLockFile (riftHome </> "package-set.lock") do
+      Logger.info "Updating the package set."
 
-          (exit, out, err) <- procStrictWithErr (Text.pack gitExe) [ "-C", Text.pack pkgsHome, "pull", "--rebase", "--all", "--tags" ] empty
-          unless (exit == ExitSuccess) do
-            Logger.error $ "Could not update the package set due to a git error.\n* Standard output:\n"
-                                                                        <> Text.unlines (mappend "> " <$> Text.lines out) <> "\n* Standard error:\n"
-                                                                        <> Text.unlines (mappend "> " <$> Text.lines err)
-            exitFailure
-          Logger.info "Successfully updated the package set!"
-      else do
-        liftIO $ withLockFile (riftHome </> "package-set.lock") do
-          Logger.info $ "Initializing package set at path '" <> Text.pack pkgsHome <> "'."
-          createDirectoryIfMissing True pkgsHome
+      (exit, out, err) <- procStrictWithErr (Text.pack git) [ "-C", Text.pack pkgsHome, "pull", "--rebase", "--all", "--tags" ] empty
+      unless (exit == ExitSuccess) do
+        Logger.error $ "Could not update the package set due to a git error.\n* Standard output:\n"
+                                                                    <> Text.unlines (mappend "> " <$> Text.lines out) <> "\n* Standard error:\n"
+                                                                    <> Text.unlines (mappend "> " <$> Text.lines err)
+        exitFailure
+      Logger.info "Successfully updated the package set!"
+  else do
+    liftIO $ withLockFile (riftHome </> "package-set.lock") do
+      Logger.info $ "Initializing package set at path '" <> Text.pack pkgsHome <> "'."
+      createDirectoryIfMissing True pkgsHome
 
-          (exit, out, err) <- procStrictWithErr (Text.pack gitExe) [ "clone", "https://github.com/zilch-lang/pkgs", Text.pack pkgsHome ] empty
-          unless (exit == ExitSuccess) do
-            Logger.error $ "Failed to clone package set to destination '" <> Text.pack pkgsHome <> "'.\n* Standard output:\n"
-                                                                          <> Text.unlines (mappend "> " <$> Text.lines out) <> "\n* Standard error:\n"
-                                                                          <> Text.unlines (mappend "> " <$> Text.lines err)
-            exitFailure
+      (exit, out, err) <- procStrictWithErr (Text.pack git) [ "clone", "https://github.com/zilch-lang/pkgs", Text.pack pkgsHome ] empty
+      unless (exit == ExitSuccess) do
+        Logger.error $ "Failed to clone package set to destination '" <> Text.pack pkgsHome <> "'.\n* Standard output:\n"
+                                                                      <> Text.unlines (mappend "> " <$> Text.lines out) <> "\n* Standard error:\n"
+                                                                      <> Text.unlines (mappend "> " <$> Text.lines err)
+        exitFailure
 
-          Logger.info "Package set initialized!"
+      Logger.info "Package set initialized!"

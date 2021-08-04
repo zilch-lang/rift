@@ -6,6 +6,7 @@
 module Rift.Commands.Impl.UpdatePackageSet (updatePackageSetCommand) where
 
 import Control.Monad (unless)
+import Control.Monad.Extra (unlessM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 
 import qualified Data.Text as Text
@@ -47,8 +48,7 @@ updatePackageSetCommand Env{..} = do
   pkgsHomeExists <- liftIO $ doesPathExist pkgsHome
   if pkgsHomeExists
   then do
-    pkgsHomeDotGitExists <- liftIO $ doesDirectoryExist (pkgsHome </> ".git")
-    unless pkgsHomeDotGitExists do
+    unlessM (liftIO $ doesDirectoryExist (pkgsHome </> ".git")) do
       Logger.error $ "'" <> Text.pack pkgsHome <> "' does not contain a git repository.\nPlease move it to another destination and retry."
       liftIO exitFailure
 

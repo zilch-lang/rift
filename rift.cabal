@@ -25,6 +25,7 @@ source-repository head
 executable rift
   main-is: Main.hs
   other-modules:
+      Control.Monad.Extra
       Rift.CLI
       Rift.CLI.Global
       Rift.CLI.Package

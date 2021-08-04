@@ -4,6 +4,7 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TupleSections #-}
 
 {-# OPTIONS -Wno-name-shadowing #-}
 
@@ -19,7 +20,7 @@ import Data.Function ((&))
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.List as List
-import Data.Maybe (isJust)
+import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
@@ -58,7 +59,7 @@ searchPackageCommand pkgName env@Env{..} = do
             exitFailure
 
     allVersionsInAllLTSs <- (HashMap.toList <$> queryAllTagsForPackage git (allTags <> ["unstable"])) `finally` restoreToUnstable
-    let sortedPackagesOnLTS = (first readLTSVersion <$> allVersionsInAllLTSs) & filter (isJust . fst) & List.sort
+    let sortedPackagesOnLTS = (first readLTSVersion <$> allVersionsInAllLTSs) & mapMaybe (\ (m, x) -> (, x) <$> m) & List.sort
 
     case sortedPackagesOnLTS of
       [] -> do

@@ -48,6 +48,8 @@ newProjectCommand path name template force Env{..} = do
                             *> liftIO exitFailure)
                            pure projectTemplate
 
+  Logger.info $ "Initializing empty project in directory '" <> Text.pack path <> "'"
+
   (exit, out, err) <- procStrictWithErr (Text.pack git) [ "tag", "-l", "-n", "1", "--color", "never" ] empty
   unless (exit == ExitSuccess) do
     Logger.error $ "'git' process returned non 0 exit code.\n* Standard output:\n"
@@ -78,6 +80,8 @@ newProjectCommand path name template force Env{..} = do
     Text.writeFile (path </> "project.dhall") $ projectDhallTemplate projectName projectTemplate lastLTS
     when (projectTemplate == Executable) do
       Text.writeFile (path </> "src" </> "Main.zc") $ mainZCTemplate projectName
+
+  Logger.info "New project successfully initialized!"
   where
     isDirectoryEmpty = liftIO . fmap null . listDirectory
 

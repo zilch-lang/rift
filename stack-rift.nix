@@ -1,5 +1,4 @@
-{
-  pkgs ? import <nixpkgs> {}
+{ pkgs ? import <nixpkgs> { }
 , ghc ? pkgs.ghc
 }:
 
@@ -8,6 +7,10 @@ pkgs.haskell.lib.buildStackProject {
 
   nativeBuildInputs = with pkgs; [
     zlib
+
+    git
+    dhall-json
+    dhall
   ];
 
   name = "rift";

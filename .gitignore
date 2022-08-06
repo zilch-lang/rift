@@ -1,2 +1,5 @@
 .stack-work/
 *~
+
+# Excluse test config
+test_cfg

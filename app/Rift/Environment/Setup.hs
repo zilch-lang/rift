@@ -53,8 +53,14 @@ setupEnv warnAboutPkgsSetNotInit = liftIO do
               Logger.error $ Text.pack err
               exitFailure
             Right _ -> writeDhallConfigToRiftCfg configPath
-        Right riftCfg -> do
-          writeDhallConfigToRiftCfg $ fromMaybe configPath riftCfg
+        Right Nothing -> do
+          E.setEnvironment (E.makeEnv ["RIFT_CFG" .= configPath]) >>= \case
+            Left err -> do
+              Logger.error $ Text.pack err
+              exitFailure
+            Right _ -> writeDhallConfigToRiftCfg configPath
+        Right (Just riftCfg) -> do
+          writeDhallConfigToRiftCfg riftCfg
 
       riftCache <- getXdgDirectory XdgCache "rift"
 

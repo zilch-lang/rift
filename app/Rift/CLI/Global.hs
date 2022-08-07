@@ -1,15 +1,12 @@
 module Rift.CLI.Global (globalCLI) where
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
-
 import Data.Foldable (fold)
-
 import Options.Applicative
-
 import Rift.CLI.Package (packageCLI)
+import Rift.CLI.Path (pathCLI)
 import Rift.CLI.Project (projectCLI)
-import Rift.Commands (Command(..))
-
+import Rift.Commands (Command (..))
 
 -- | The global CLI contains:
 --
@@ -18,6 +15,8 @@ import Rift.Commands (Command(..))
 --     * @package@/@pkg@: Various commands for manipulating the package set
 --
 --     * @project@: A group of commands to manipulate the current project
+--
+--     * @path@: Prints or query various path information related to data storage
 --
 --   * Flags & options:
 --
@@ -28,4 +27,4 @@ globalCLI = liftIO $ customExecParser preferences opts
     opts = info (internalCLI <**> helper) (fullDesc <> progDesc "Rift, the manager of Zilch projects")
     preferences = prefs showHelpOnError
 
-    internalCLI = hsubparser $ fold $ mconcat [ packageCLI, projectCLI ]
+    internalCLI = hsubparser $ fold $ mconcat [packageCLI, projectCLI, pathCLI]

@@ -14,6 +14,8 @@ import Network.HTTP.Req (MonadHttp)
 import Rift.Commands.Executor
 import Rift.Commands.Impl.BuildProject (buildProjectCommand)
 import Rift.Commands.Impl.NewProject (newProjectCommand)
+import Rift.Commands.Impl.PrintPaths (printPaths)
+import Rift.Commands.Impl.QueryPaths (queryAndPrintPaths)
 import Rift.Commands.Impl.SearchPackage (searchPackageCommand)
 import Rift.Commands.Impl.UpdatePackageSet (updatePackageSetCommand)
 
@@ -21,6 +23,7 @@ import Rift.Commands.Impl.UpdatePackageSet (updatePackageSetCommand)
 data Command
   = Package PkgCommand
   | Project ProjCommand
+  | Path PathCommand
 
 -- | A command acting on the package set.
 data PkgCommand
@@ -56,9 +59,17 @@ data ProjCommand
       -- ^ The names of the components to build (lib:XXX or exe:XXX).
       --   If none are specified, build all the components found in the project.
 
+data PathCommand
+  = -- | Print all known/used paths.
+    Print
+  | -- | Query a single path key.
+    Query
+      Text
+
 instance (MonadIO m, MonadHttp m, MonadMask m) => CommandExecutor Command m where
   executeCommand (Package c) e = executeCommand c e
   executeCommand (Project c) e = executeCommand c e
+  executeCommand (Path c) e = executeCommand c e
 
 instance (MonadIO m) => CommandExecutor PkgCommand m where
   executeCommand UpdatePackageSet e = updatePackageSetCommand e
@@ -69,3 +80,7 @@ instance (MonadIO m, MonadHttp m, MonadMask m) => CommandExecutor ProjCommand m 
   executeCommand (NewProject p n t f) e = newProjectCommand p n t f e
   executeCommand (BuildProject dry cores dirty comps) e = buildProjectCommand dry cores dirty comps e
   executeCommand _ e = error "not yet implemented"
+
+instance (MonadIO m) => CommandExecutor PathCommand m where
+  executeCommand Print e = printPaths e
+  executeCommand (Query r) e = queryAndPrintPaths r e

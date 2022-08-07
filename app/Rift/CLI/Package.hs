@@ -15,6 +15,8 @@ import Rift.Commands (Command(..))
 --
 --     * @update@: Update the current copy of the package set to the latest version available
 --
+--     * @search@: Search for a package by name inside every/some LTSes
+--
 --   * Flags & options:
 --
 --     * @-h@/@--help@: Show the help menu of the subcommand

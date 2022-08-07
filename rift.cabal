@@ -31,6 +31,9 @@ executable rift
       Rift.CLI.Package
       Rift.CLI.Package.Search
       Rift.CLI.Package.Update
+      Rift.CLI.Path
+      Rift.CLI.Path.Print
+      Rift.CLI.Path.Query
       Rift.CLI.Project
       Rift.CLI.Project.Build
       Rift.CLI.Project.New
@@ -39,6 +42,8 @@ executable rift
       Rift.Commands.Executor
       Rift.Commands.Impl.BuildProject
       Rift.Commands.Impl.NewProject
+      Rift.Commands.Impl.PrintPaths
+      Rift.Commands.Impl.QueryPaths
       Rift.Commands.Impl.SearchPackage
       Rift.Commands.Impl.UpdatePackageSet
       Rift.Config.PackageSet

@@ -6,7 +6,7 @@ module Rift.Config.Project where
 import Data.Foldable (fold)
 import Data.Text (Text)
 import Dhall.Marshal.Decode (FromDhall (..), auto, constructor, field, record, union, unit)
-import Rift.Config.PackageSet (LTSVersion)
+import Rift.Config.PackageSet (LTSVersion, PackageSource (..))
 
 data VersionRange
   = Version
@@ -61,6 +61,13 @@ data Dependency
       Text
       -- ^ The hash of the file, in SHA-256.
   deriving (Show, Eq)
+
+-- | Transforms a 'PackageSource' into a 'Dependency'.
+packageSourceToDependency :: PackageSource -> Dependency
+packageSourceToDependency (Git url rev) = GitDep url rev
+packageSourceToDependency (Tar url sha256) = TarDep url sha256
+packageSourceToDependency (TarGz url sha256) = TarGzDep url sha256
+packageSourceToDependency (Zip url sha256) = ZipDep url sha256
 
 data ProjectType
   = ProjectType

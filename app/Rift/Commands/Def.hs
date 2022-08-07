@@ -13,6 +13,7 @@ import Data.Text (Text)
 import Network.HTTP.Req (MonadHttp)
 import Rift.Commands.Executor
 import Rift.Commands.Impl.BuildProject (buildProjectCommand)
+import Rift.Commands.Impl.FetchPackage (fetchPackageCommand)
 import Rift.Commands.Impl.NewProject (newProjectCommand)
 import Rift.Commands.Impl.PrintPaths (printPaths)
 import Rift.Commands.Impl.QueryPaths (queryAndPrintPaths)
@@ -33,6 +34,14 @@ data PkgCommand
     SearchPackage
       Text
       -- ^  The name of the package to search for.
+  | -- | Fetch a package either from the default LTS (given in the config) or from the specified LTS.
+    FetchPackage
+      Text
+      -- ^ The name of the package to fetch.
+      (Maybe Text)
+      -- ^ An optional version constraint to satisfy.
+      (Maybe Text)
+      -- ^ The LTS where to get the package from (defaults to the latest if not specified).
 
 -- | A command acting on the current project.
 data ProjCommand
@@ -71,9 +80,10 @@ instance (MonadIO m, MonadHttp m, MonadMask m) => CommandExecutor Command m wher
   executeCommand (Project c) e = executeCommand c e
   executeCommand (Path c) e = executeCommand c e
 
-instance (MonadIO m, MonadMask m) => CommandExecutor PkgCommand m where
+instance (MonadIO m, MonadHttp m, MonadMask m) => CommandExecutor PkgCommand m where
   executeCommand UpdatePackageSet e = updatePackageSetCommand e
   executeCommand (SearchPackage p) e = searchPackageCommand p e
+  executeCommand (FetchPackage n c l) e = fetchPackageCommand n c l e
   executeCommand _ e = error "not yet implemented"
 
 instance (MonadIO m, MonadHttp m, MonadMask m) => CommandExecutor ProjCommand m where

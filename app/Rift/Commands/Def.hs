@@ -7,8 +7,10 @@
 
 module Rift.Commands.Def where
 
+import Control.Monad.Catch (MonadMask)
 import Control.Monad.IO.Class (MonadIO)
 import Data.Text (Text)
+import Network.HTTP.Req (MonadHttp)
 import Rift.Commands.Executor
 import Rift.Commands.Impl.BuildProject (buildProjectCommand)
 import Rift.Commands.Impl.NewProject (newProjectCommand)
@@ -54,7 +56,7 @@ data ProjCommand
       -- ^ The names of the components to build (lib:XXX or exe:XXX).
       --   If none are specified, build all the components found in the project.
 
-instance (MonadIO m) => CommandExecutor Command m where
+instance (MonadIO m, MonadHttp m, MonadMask m) => CommandExecutor Command m where
   executeCommand (Package c) e = executeCommand c e
   executeCommand (Project c) e = executeCommand c e
 
@@ -63,7 +65,7 @@ instance (MonadIO m) => CommandExecutor PkgCommand m where
   executeCommand (SearchPackage p) e = searchPackageCommand p e
   executeCommand _ e = error "not yet implemented"
 
-instance (MonadIO m) => CommandExecutor ProjCommand m where
+instance (MonadIO m, MonadHttp m, MonadMask m) => CommandExecutor ProjCommand m where
   executeCommand (NewProject p n t f) e = newProjectCommand p n t f e
   executeCommand (BuildProject dry cores dirty comps) e = buildProjectCommand dry cores dirty comps e
   executeCommand _ e = error "not yet implemented"

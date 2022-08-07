@@ -49,3 +49,11 @@ executables:
     - unordered-containers
     - hashable
     - dhall >=1.30
+    - containers
+    - req
+    - cryptonite
+    - temporary
+    - tar
+    - zlib
+    - exceptions
+    - modern-uri

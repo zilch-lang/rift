@@ -42,6 +42,7 @@ executable rift
       Rift.Commands.Impl.SearchPackage
       Rift.Commands.Impl.UpdatePackageSet
       Rift.Config.PackageSet
+      Rift.Config.Project
       Rift.Config.Template
       Rift.Environment
       Rift.Environment.Def
@@ -58,16 +59,24 @@ executable rift
     , ansi-terminal
     , base >=4.7 && <5
     , bytestring
+    , containers
+    , cryptonite
     , dhall >=1.30
     , directory
     , envy
+    , exceptions
     , filepath
     , fsnotify
     , hashable
+    , modern-uri
     , optparse-applicative
     , raw-strings-qq
+    , req
+    , tar
     , template-haskell
+    , temporary
     , text
     , turtle
     , unordered-containers
+    , zlib
   default-language: Haskell2010

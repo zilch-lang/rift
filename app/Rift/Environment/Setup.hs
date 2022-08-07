@@ -17,7 +17,7 @@ import qualified Data.Text as Text
 import Rift.Environment.Def (Environment (..))
 import Rift.Environment.TH (rf)
 import qualified Rift.Logger as Logger
-import System.Directory (XdgDirectory (XdgData), createDirectoryIfMissing, doesPathExist, findExecutable, getXdgDirectory)
+import System.Directory (XdgDirectory (XdgCache, XdgData), createDirectoryIfMissing, doesPathExist, findExecutable, getXdgDirectory)
 import System.Envy ((.=))
 import qualified System.Envy as E
 import System.Exit (exitFailure)
@@ -56,6 +56,8 @@ setupEnv warnAboutPkgsSetNotInit = liftIO do
         Right riftCfg -> do
           writeDhallConfigToRiftCfg $ fromMaybe configPath riftCfg
 
+      riftCache <- getXdgDirectory XdgCache "rift"
+
       when warnAboutPkgsSetNotInit do
         let packageSetPath = riftHome </> "pkgs"
         exists <- doesPathExist packageSetPath
@@ -69,7 +71,7 @@ setupEnv warnAboutPkgsSetNotInit = liftIO do
             exitFailure
           Just p -> pure p
 
-      pure $ Env {riftHome, pkgsHome = riftHome </> "pkgs", git}
+      pure $ Env {riftHome, pkgsHome = riftHome </> "pkgs", riftCache, git}
 
 -- | Writes the default template to the given configuration path.
 writeDhallConfigToRiftCfg :: Setup m => FilePath -> m ()

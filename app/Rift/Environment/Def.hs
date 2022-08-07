@@ -6,6 +6,8 @@ data Environment = Env
     riftHome :: FilePath,
     -- | Path to @$RIFT_HOME/pkgs@
     pkgsHome :: FilePath,
+    -- | Path to @$RIFT_CACHE@
+    riftCache :: FilePath,
     -- | Path to tge @git@ executable
     git :: FilePath
   }

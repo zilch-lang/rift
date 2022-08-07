@@ -57,3 +57,4 @@ executables:
     - zlib
     - exceptions
     - modern-uri
+    - zip-archive

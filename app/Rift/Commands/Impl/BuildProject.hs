@@ -8,6 +8,7 @@
 module Rift.Commands.Impl.BuildProject where
 
 import qualified Codec.Archive.Tar as Tar
+import qualified Codec.Archive.Zip as Zip
 import qualified Codec.Compression.GZip as GZip
 import Control.Applicative ((<|>))
 import Control.Monad (when)
@@ -101,7 +102,73 @@ fetchExtraDependencies _ [] = pure mempty
 fetchExtraDependencies env (dep : deps) = do
   done <- fetchExtraDependencies env deps
   (path, project) <- case dep of
-    TarDep url sha256 -> do
+    TarDep url sha256 -> unpackArchive url sha256 \path dir tar -> do
+      liftIO . Tar.unpack dir $ Tar.read tar
+      children <- liftIO $ listDirectory dir
+
+      case children of
+        [] -> do
+          Logger.error $ "Tarball file '" <> url <> "' is empty."
+          liftIO exitFailure
+        [dir2] -> do
+          let dir' = dir </> dir2
+          unlessM (liftIO . doesFileExist $ dir' </> "project.dhall") do
+            Logger.error $ "Tarball file '" <> url <> "' does not contain a Rift project (file 'project.dhall' not present)"
+            liftIO exitFailure
+
+          liftIO $ copyDirectoryRecursive dir' path
+        _ : _ -> do
+          unlessM (liftIO . doesFileExist $ dir </> "project.dhall") do
+            Logger.error $ "Tarball file '" <> url <> "' does not contain a Rift project (file 'project.dhall' not present)"
+            liftIO exitFailure
+
+          liftIO $ copyDirectoryRecursive dir path
+    TarGzDep url sha256 -> unpackArchive url sha256 \path dir tar -> do
+      liftIO . Tar.unpack dir . Tar.read $ GZip.decompress tar
+      children <- liftIO $ listDirectory dir
+
+      case children of
+        [] -> do
+          Logger.error $ "GZipped tarball file '" <> url <> "' is empty."
+          liftIO exitFailure
+        [dir2] -> do
+          let dir' = dir </> dir2
+          unlessM (liftIO . doesFileExist $ dir' </> "project.dhall") do
+            Logger.error $ "GZipped tarball file '" <> url <> "' does not contain a Rift project (file 'project.dhall' not present)"
+            liftIO exitFailure
+
+          liftIO $ copyDirectoryRecursive dir' path
+        _ : _ -> do
+          unlessM (liftIO . doesFileExist $ dir </> "project.dhall") do
+            Logger.error $ "GZipped tarball file '" <> url <> "' does not contain a Rift project (file 'project.dhall' not present)"
+            liftIO exitFailure
+
+          liftIO $ copyDirectoryRecursive dir path
+    ZipDep url sha256 -> unpackArchive url sha256 \path dir zip -> do
+      liftIO . Zip.extractFilesFromArchive [Zip.OptDestination dir] $ Zip.toArchive zip
+      children <- liftIO $ listDirectory dir
+
+      case children of
+        [] -> do
+          Logger.error $ "Zipped file '" <> url <> "' is empty."
+          liftIO exitFailure
+        [dir2] -> do
+          let dir' = dir </> dir2
+          unlessM (liftIO . doesFileExist $ dir' </> "project.dhall") do
+            Logger.error $ "Zipped file '" <> url <> "' does not contain a Rift project (file 'project.dhall' not present)"
+            liftIO exitFailure
+
+          liftIO $ copyDirectoryRecursive dir' path
+        _ : _ -> do
+          unlessM (liftIO . doesFileExist $ dir </> "project.dhall") do
+            Logger.error $ "Zipped file '" <> url <> "' does not contain a Rift project (file 'project.dhall' not present)"
+            liftIO exitFailure
+
+          liftIO $ copyDirectoryRecursive dir path
+    GitDep url rev -> undefined
+  pure (Map.insert path project done)
+  where
+    unpackArchive url sha256 unpack = do
       let path = riftCache env </> "extra-deps" </> Text.unpack sha256
 
       unlessM (liftIO $ (not (Text.null sha256) &&) <$> doesDirectoryExist path) do
@@ -120,36 +187,14 @@ fetchExtraDependencies env (dep : deps) = do
         let hashed = Text.pack $ show (hash (LBS.toStrict resp) :: Digest SHA256)
 
         when (hashed /= sha256) do
-          Logger.error $ "Cannot validate extra tar dependency '" <> url <> "':\n* Expected SHA256: " <> sha256 <> "\n* Got SHA256: " <> hashed
+          Logger.error $ "Cannot validate extra dependency '" <> url <> "':\n* Expected SHA256: " <> sha256 <> "\n* Got SHA256: " <> hashed
           liftIO exitFailure
 
-        withSystemTempDirectory "riftXXXX" \dir -> do
-          liftIO . Tar.unpack dir . Tar.read $ GZip.decompress resp
-          children <- liftIO $ listDirectory dir
-
-          case children of
-            [] -> do
-              Logger.error $ "GZipped tarball file '" <> url <> "' is empty."
-              liftIO exitFailure
-            [dir2] -> do
-              let dir' = dir </> dir2
-              unlessM (liftIO . doesFileExist $ dir' </> "project.dhall") do
-                Logger.error $ "GZipped tarball file '" <> url <> "' does not contain a Rift project (file 'project.dhall' not present)"
-                liftIO exitFailure
-
-              liftIO $ copyDirectoryRecursive dir' path
-            _ : _ -> do
-              unlessM (liftIO . doesFileExist $ dir </> "project.dhall") do
-                Logger.error $ "GZipped tarball file '" <> url <> "' does not contain a Rift project (file 'project.dhall' not present)"
-                liftIO exitFailure
-
-              liftIO $ copyDirectoryRecursive dir path
+        withSystemTempDirectory "riftXXXX" \dir -> unpack path dir resp
 
       project <- liftIO $ inputFile auto (path </> "project.dhall")
 
       pure (path, project)
-    _ -> undefined
-  pure (Map.insert path project done)
 
 checkUnresolvedDependencies :: (MonadIO m) => Map FilePath ProjectType -> [Text] -> [Text] -> m ([Text], [Text])
 checkUnresolvedDependencies _ _ [] = pure ([], [])

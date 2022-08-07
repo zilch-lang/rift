@@ -25,8 +25,10 @@ let Component =
           }
 
 let Dependency =
-      < Git : { url : Text, rev : Text, sha256 : Text }
+      < Git : { url : Text, rev : Text }
+      | TarGz : { url : Text, sha256 : Text }
       | Tar : { url : Text, sha256 : Text }
+      | Zip : { url : Text, sha256 : Text }
       >
 
 let LTS =

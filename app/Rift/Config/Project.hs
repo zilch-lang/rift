@@ -44,9 +44,17 @@ data Dependency
       -- ^ The URL to the @git@ repository.
       Text
       -- ^ The revision to fetch
-      Text
-      -- ^ The hash?
   | TarDep
+      Text
+      -- ^ The URL to the @.tar@ file.
+      Text
+      -- ^ The hash of the file, in SHA-256.
+  | ZipDep
+      Text
+      -- ^ The URL to the @.zip@ file.
+      Text
+      -- ^ The hash of the file, in SHA-256.
+  | TarGzDep
       Text
       -- ^ The URL to the @.tar.gz@ file.
       Text
@@ -94,7 +102,9 @@ instance FromDhall Dependency where
     union $
       fold
         [ constructor "Git" git,
-          constructor "Tar" tar
+          constructor "Tar" tar,
+          constructor "TarGz" targz,
+          constructor "Zip" zip
         ]
     where
       git =
@@ -102,10 +112,19 @@ instance FromDhall Dependency where
           GitDep
             <$> field "url" auto
             <*> field "rev" auto
-            <*> field "sha256" auto
       tar =
         record $
           TarDep
+            <$> field "url" auto
+            <*> field "sha256" auto
+      targz =
+        record $
+          TarGzDep
+            <$> field "url" auto
+            <*> field "sha256" auto
+      zip =
+        record $
+          ZipDep
             <$> field "url" auto
             <*> field "sha256" auto
 

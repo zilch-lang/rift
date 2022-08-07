@@ -48,3 +48,4 @@ executables:
     - fsnotify
     - unordered-containers
     - hashable
+    - dhall >=1.30

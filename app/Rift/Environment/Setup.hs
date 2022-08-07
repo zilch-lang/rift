@@ -56,13 +56,6 @@ setupEnv warnAboutPkgsSetNotInit = liftIO do
         Right riftCfg -> do
           writeDhallConfigToRiftCfg $ fromMaybe configPath riftCfg
 
-      dhallJsonExe <-
-        findExecutable "dhall-to-json" >>= \case
-          Nothing -> do
-            Logger.error "Executable 'dhall-to-json' not found in the PATH.\nSee <https://github.com/dhall-lang/dhall-haskell/tree/master/dhall-json#readme> for instructions on how to install it."
-            exitFailure
-          Just p -> pure p
-
       when warnAboutPkgsSetNotInit do
         let packageSetPath = riftHome </> "pkgs"
         exists <- doesPathExist packageSetPath
@@ -76,7 +69,7 @@ setupEnv warnAboutPkgsSetNotInit = liftIO do
             exitFailure
           Just p -> pure p
 
-      pure $ Env {riftHome, pkgsHome = riftHome </> "pkgs", dhallToJson = dhallJsonExe, git}
+      pure $ Env {riftHome, pkgsHome = riftHome </> "pkgs", git}
 
 -- | Writes the default template to the given configuration path.
 writeDhallConfigToRiftCfg :: Setup m => FilePath -> m ()

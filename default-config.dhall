@@ -29,11 +29,22 @@ let Dependency =
       | Tar : { url : Text, sha256 : Text }
       >
 
+let LTS =
+      let Ty = < Unstable | Stable : { major : Natural, minor : Natural } >
+
+      in  { Type = Ty
+          , unstable = Ty.Unstable
+          , stable =
+              λ(major : Natural) →
+              λ(minor : Natural) →
+                Ty.Stable { major, minor }
+          }
+
 let Project =
       { Type =
           { components : List Component.Type
           , -- The LTS version to use for the package set.
-            lts : Text
+            lts : LTS.Type
           , -- Additional dependencies which are not part of the package set.
             extra-deps : List Dependency
           }
@@ -43,4 +54,4 @@ let Project =
         }
       }
 
-in  { Project, VersionRange, Component, Dependency }
+in  { Project, VersionRange, Component, Dependency, LTS }

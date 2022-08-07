@@ -164,7 +164,7 @@ projectDhallTemplate projectName projectTemplate lastLTS =
           $ Dhall.Let
             (Dhall.Binding Nothing "Project" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "Project" Nothing))
             $ Dhall.Let
-              (Dhall.Binding Nothing "Version" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "Version" Nothing))
+              (Dhall.Binding Nothing "Version" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "VersionRange" Nothing))
               $ Dhall.Let
                 (Dhall.Binding Nothing "Component" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "Component" Nothing))
                 $ Dhall.Let

@@ -35,6 +35,9 @@ data Snapshot = Snapshot
   }
   deriving (Generic, Show)
 
+ltsOf :: Snapshot -> LTSVersion
+ltsOf (Snapshot lts _ _) = lts
+
 data Package = Pkg
   { name :: Text,
     version :: Text,

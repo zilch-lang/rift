@@ -10,33 +10,32 @@ module Rift.Commands.Impl.BuildProject where
 import qualified Codec.Archive.Tar as Tar
 import qualified Codec.Archive.Zip as Zip
 import qualified Codec.Compression.GZip as GZip
-import Control.Applicative ((<|>))
 import Control.Monad (unless, when)
 import Control.Monad.Catch (MonadMask)
-import Control.Monad.Extra (unlessM, whenM)
+import Control.Monad.Extra (unlessM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Crypto.Hash (Digest, SHA256, hash)
-import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
-import Data.List (foldl', nub)
-import qualified Data.List as List
+import Data.List (nub)
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Maybe (fromJust, fromMaybe)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
+import qualified Data.Text.IO as Text
 import Data.Text.Read (decimal)
 import Dhall (auto, inputFile)
-import Network.HTTP.Req (GET (..), MonadHttp, NoReqBody (..), bsResponse, http, https, lbsResponse, req, responseBody, responseHeader, useHttpURI, useHttpsURI, useURI, (/:))
+import Network.HTTP.Req (GET (..), MonadHttp, NoReqBody (..), lbsResponse, req, responseBody, responseHeader, useURI)
+import Rift.Commands.Impl.Utils.Directory (copyDirectoryRecursive)
 import Rift.Config.PackageSet (Snapshot (..), snapshotFromDhallFile)
 import Rift.Config.Project (ComponentType (..), Dependency (..), ProjectType (..), nameOf)
-import Rift.Environment (Environment, git, pkgsHome, riftCache)
+import Rift.Environment (Environment, git, riftCache)
 import qualified Rift.Logger as Logger
-import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, doesPathExist, listDirectory, removeDirectoryRecursive)
+import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory, removeDirectoryRecursive)
 import System.Exit (ExitCode (..), exitFailure)
-import System.FilePath ((</>))
-import System.IO.Temp (getCanonicalTemporaryDirectory, openBinaryTempFile, withSystemTempDirectory)
+import System.FilePath ((<.>), (</>))
+import System.IO.Temp (withSystemTempDirectory)
 import qualified Text.URI as URI
 import Turtle (empty, procStrictWithErr)
 
@@ -49,10 +48,16 @@ import Turtle (empty, procStrictWithErr)
 --      We may want to put them inside @~\/.cache\/rift@ instead, where each entry is organized as:
 --
 --      > ~/.cache/rift/
---      > └── <lts name>.<hash of 'set.dhall'>/
---      >     └── <component name>.<component version>/
---      >         ├── project.dhall
---      >         └── ...
+--      > └── <lts name>.<hash of 'lts/packages/set.dhall'>/
+--      >     ├── lts
+--      >     │   ├── lib
+--      >     │   ├── packages
+--      >     │   │   └── set.dhall
+--      >     │   └── utils
+--      >     └── sources
+--      >         └── <component name>.<component version>/
+--      >             ├── project.dhall
+--      >             └── ...
 --
 --   3. Create a dependency tree, taking in account both and extra- and intra-dependencies
 --
@@ -73,13 +78,18 @@ buildProjectCommand :: (MonadIO m, MonadHttp m, MonadMask m) => Bool -> Integer 
 buildProjectCommand dryRun nbCores dirtyFiles componentsToBuild env = do
   !project@(ProjectType components lts extraDeps) <- liftIO $ inputFile auto "project.dhall"
 
+  let ltsTag = show lts
+      ltsHashFile = riftCache env </> "hashes" </> ltsTag <.> "hash"
+  ltsHash <- liftIO $ Text.readFile ltsHashFile
+  let ltsDir = riftCache env </> (ltsTag <> "." <> Text.unpack ltsHash)
+
   componentsToBuild <- case componentsToBuild of
     [] -> do
       Logger.debug "No component specified. Building all local components."
       pure components
     cs -> getComponentsByName components (nub cs)
 
-  snapshot <- liftIO $ snapshotFromDhallFile (pkgsHome env </> "packages" </> "set.dhall") env
+  snapshot <- liftIO $ snapshotFromDhallFile (ltsDir </> "lts" </> "packages" </> "set.dhall") env
   extraDeps' <- fetchExtraDependencies env (nub extraDeps)
   (resolvedDeps1, unresolvedDeps) <- gatherDependencies snapshot componentsToBuild
   (resolvedDeps2, unresolvedDeps) <- checkUnresolvedDependencies extraDeps' (nameOf <$> components) unresolvedDeps
@@ -152,7 +162,7 @@ fetchExtraDependencies env (dep : deps) = do
             Logger.error $ "Zipped file '" <> url <> "' does not contain a Rift project (file 'project.dhall' not present)"
             liftIO exitFailure
 
-          liftIO $ copyDirectoryRecursive dir path
+          liftIO $ copyDirectoryRecursive dir path (const True)
 
       project <- liftIO $ inputFile auto (path </> "project.dhall")
       pure (path, project)
@@ -194,34 +204,15 @@ fetchExtraDependencies env (dep : deps) = do
       unlessM (liftIO . doesFileExist $ dir' </> "project.dhall") do
         Logger.error $ kind <> " file '" <> url <> "' does not contain a Rift project (file 'project.dhall' not present)"
         liftIO exitFailure
-      liftIO $ copyDirectoryRecursive dir' path
+      liftIO $ copyDirectoryRecursive dir' path (const True)
     copyArchive url dir path kind _ = do
       unlessM (liftIO . doesFileExist $ dir </> "project.dhall") do
         Logger.error $ kind <> " file '" <> url <> "' does not contain a Rift project (file 'project.dhall' not present)"
         liftIO exitFailure
-      liftIO $ copyDirectoryRecursive dir path
+      liftIO $ copyDirectoryRecursive dir path (const True)
 
 checkUnresolvedDependencies :: (MonadIO m) => Map FilePath ProjectType -> [Text] -> [Text] -> m ([Text], [Text])
 checkUnresolvedDependencies _ _ [] = pure ([], [])
-
--- | Recursively copy the input directory to the output directory.
-copyDirectoryRecursive :: FilePath -> FilePath -> IO ()
-copyDirectoryRecursive from to = do
-  createDirectoryIfMissing True to
-  children <- listDirectory from
-  copyRecursive' from children to
-  where
-    copyRecursive' _ [] _ = pure ()
-    copyRecursive' from (c : cs) to =
-      doesDirectoryExist c >>= \case
-        True -> do
-          Logger.debug $ "Copying directory '" <> Text.pack (from </> c) <> "' to '" <> Text.pack (to </> c) <> "'"
-          copyDirectoryRecursive (from </> c) (to </> c)
-          copyRecursive' from cs to
-        False -> do
-          Logger.debug $ "Copying file '" <> Text.pack (from </> c) <> "' to '" <> Text.pack (to </> c) <> "'"
-          copyFile (from </> c) (to </> c)
-          copyRecursive' from cs to
 
 ------------------------------
 

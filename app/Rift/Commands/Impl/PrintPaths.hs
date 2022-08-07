@@ -26,7 +26,6 @@ printPaths Env {..} = do
     let paths =
           sort
             [ "rift-home: " <> Text.pack riftHome,
-              "pkgs-home: " <> Text.pack pkgsHome,
               "rift-cache: " <> Text.pack riftCache,
               "rift-config: " <> Text.pack riftCfg
             ]

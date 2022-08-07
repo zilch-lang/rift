@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 module Rift.Config.Project where
 

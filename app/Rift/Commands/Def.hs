@@ -71,7 +71,7 @@ instance (MonadIO m, MonadHttp m, MonadMask m) => CommandExecutor Command m wher
   executeCommand (Project c) e = executeCommand c e
   executeCommand (Path c) e = executeCommand c e
 
-instance (MonadIO m) => CommandExecutor PkgCommand m where
+instance (MonadIO m, MonadMask m) => CommandExecutor PkgCommand m where
   executeCommand UpdatePackageSet e = updatePackageSetCommand e
   executeCommand (SearchPackage p) e = searchPackageCommand p e
   executeCommand _ e = error "not yet implemented"

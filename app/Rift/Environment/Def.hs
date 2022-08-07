@@ -4,8 +4,6 @@ module Rift.Environment.Def (Environment (..)) where
 data Environment = Env
   { -- | Equivalent to the @$RIFT_HOME@ environment variable
     riftHome :: FilePath,
-    -- | Path to @$RIFT_HOME/pkgs@
-    pkgsHome :: FilePath,
     -- | Path to @$RIFT_CACHE@
     riftCache :: FilePath,
     -- | Path to tge @git@ executable

@@ -17,7 +17,7 @@ import qualified Data.Text as Text
 import Rift.Environment.Def (Environment (..))
 import Rift.Environment.TH (rf)
 import qualified Rift.Logger as Logger
-import System.Directory (XdgDirectory (XdgCache, XdgData), createDirectoryIfMissing, doesPathExist, findExecutable, getXdgDirectory)
+import System.Directory (XdgDirectory (XdgCache, XdgConfig), createDirectoryIfMissing, doesPathExist, findExecutable, getXdgDirectory)
 import System.Envy ((.=))
 import qualified System.Envy as E
 import System.Exit (exitFailure)
@@ -27,7 +27,7 @@ type Setup m = (MonadIO m)
 
 -- | Setups the environment needed for the project manager to correctly work:
 --
---   * Fetches the @RIFT_HOME@ environment variable which defaults to @$XDG_DATA_HOME/rift@
+--   * Fetches the @RIFT_HOME@ environment variable which defaults to @$XDG_CONFIG_HOME/rift@
 --
 --   * Sets the @RIFT_CFG@ environment variable to @$RIFT_HOME/config.dhall@ to allow using @env:RIFT_CFG@ in the project configuration file
 --
@@ -43,7 +43,7 @@ setupEnv warnAboutPkgsSetNotInit = liftIO do
       Logger.error $ Text.pack err
       exitFailure
     Right riftHome -> do
-      riftHome <- ($ riftHome) <$> (fromMaybe <$> getXdgDirectory XdgData "rift")
+      riftHome <- ($ riftHome) <$> (fromMaybe <$> getXdgDirectory XdgConfig "rift")
       let configPath = riftHome </> "config.dhall"
 
       E.runEnv (E.envMaybe @FilePath "RIFT_CFG") >>= \case
@@ -65,7 +65,7 @@ setupEnv warnAboutPkgsSetNotInit = liftIO do
       riftCache <- getXdgDirectory XdgCache "rift"
 
       when warnAboutPkgsSetNotInit do
-        let packageSetPath = riftHome </> "pkgs"
+        let packageSetPath = riftCache </> "pkgs"
         exists <- doesPathExist packageSetPath
         unless exists do
           Logger.warn $ "Package set not initialized.\nPlease run 'rift package update'."
@@ -77,7 +77,7 @@ setupEnv warnAboutPkgsSetNotInit = liftIO do
             exitFailure
           Just p -> pure p
 
-      pure $ Env {riftHome, pkgsHome = riftHome </> "pkgs", riftCache, git}
+      pure $ Env {riftHome, riftCache, git}
 
 -- | Writes the default template to the given configuration path.
 writeDhallConfigToRiftCfg :: Setup m => FilePath -> m ()

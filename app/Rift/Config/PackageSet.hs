@@ -51,10 +51,17 @@ data Package = Pkg
 data PackageSource
   = Git
       { url :: Text,
-        rev :: Text,
-        sha256 :: Text
+        rev :: Text
       }
   | Tar
+      { url :: Text,
+        sha256 :: Text
+      }
+  | TarGz
+      { url :: Text,
+        sha256 :: Text
+      }
+  | Zip
       { url :: Text,
         sha256 :: Text
       }
@@ -122,7 +129,9 @@ instance FromDhall PackageSource where
     union $
       fold
         [ constructor "Git" git,
-          constructor "Tar" tar
+          constructor "Tar" tar,
+          constructor "TarGz" targz,
+          constructor "Zip" zip
         ]
     where
       git =
@@ -130,10 +139,19 @@ instance FromDhall PackageSource where
           Git
             <$> field "url" auto
             <*> field "rev" auto
-            <*> field "sha256" auto
       tar =
         record $
           Tar
+            <$> field "url" auto
+            <*> field "sha256" auto
+      targz =
+        record $
+          TarGz
+            <$> field "url" auto
+            <*> field "sha256" auto
+      zip =
+        record $
+          Zip
             <$> field "url" auto
             <*> field "sha256" auto
 

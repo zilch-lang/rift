@@ -13,13 +13,13 @@ in  { Type =
           maintainers : List Text
         , -- | Is the package currently broken?
           broken : Bool
-        , -- | Is the package depreciated?
-          depreciated : Bool
+        , -- | Is the package deprecated?
+          deprecated : Bool
         }
     , default =
       { component = None Text
       , maintainers = [] : List Text
       , broken = False
-      , depreciated = False
+      , deprecated = False
       }
     }

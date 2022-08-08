@@ -41,11 +41,11 @@ ltsOf (Snapshot lts _ _) = lts
 
 data Package = Pkg
   { name :: Text,
-    version :: Text,
     src :: Source,
     component :: Maybe Text,
     maintainers :: [Text],
-    broken :: Bool
+    broken :: Bool,
+    deprecated :: Bool
   }
   deriving (Generic, Show)
 
@@ -100,11 +100,11 @@ instance FromDhall Package where
     record $
       Pkg
         <$> field "name" auto
-        <*> field "version" auto
         <*> field "src" auto
         <*> field "component" auto
         <*> field "maintainers" auto
         <*> field "broken" auto
+        <*> field "deprecated" auto
 
 -- | Read an LTS version which is either @unstable@ or of the form @lts-<major>.<minor>@.
 readLTSVersion :: Text -> Maybe LTSVersion

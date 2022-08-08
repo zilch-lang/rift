@@ -42,39 +42,41 @@ fetchPackageCommand name versionConstraint ltsName env = do
   Snapshot _ _ packageSet <- liftIO (inputFile auto (ltsDir </> "lts" </> "packages" </> "set" <.> "dhall") :: IO Snapshot)
   let packages = filter (\(Pkg n _ _ _ _ _) -> n == name) packageSet
 
-  case sortBy (flip compare `on` version) packages of
-    [] -> do
-      Logger.error $ "Package '" <> name <> "' not found in LTS '" <> Text.pack ltsTag <> "'"
-      liftIO exitFailure
-    p : ps -> do
-      -- TODO: take @versionConstraint@ in account
-      go ltsDir p
+  -- case sortBy (flip compare `on` version) packages of
+  --   [] -> do
+  --     Logger.error $ "Package '" <> name <> "' not found in LTS '" <> Text.pack ltsTag <> "'"
+  --     liftIO exitFailure
+  --   p : ps -> do
+  --     -- TODO: take @versionConstraint@ in account
+  --     go ltsDir p
+
+  pure ()
   where
     go :: (MonadIO m, MonadHttp m, MonadMask m) => FilePath -> Package -> m ()
-    go ltsDir (Pkg name version src component _ _) = do
-      let dir = ltsDir </> "sources" </> Text.unpack name <.> Text.unpack version
+    go ltsDir (Pkg name src component _ _ _) = do
+      -- let dir = ltsDir </> "sources" </> Text.unpack name <.> Text.unpack version
 
-      unlessM (liftIO $ doesDirectoryExist dir) do
-        -- TODO: do transitively: also download all dependencies after
-        (_, components, Configuration _ extra) <- downloadAndExtract (\_ _ _ -> dir) src env
-        deps <- case (component, components) of
-          (Nothing, _ : _ : _) -> do
-            Logger.error "Cannot choose a single component from the package."
-            liftIO exitFailure
-          (Nothing, [ComponentType _ _ deps _ _ _]) -> pure deps
-          (_, []) -> do
-            Logger.error "No component found in package."
-            liftIO exitFailure
-          (Just comp, cs) ->
-            case filter (\(ComponentType c _ _ _ _ _) -> c == comp) cs of
-              [] -> do
-                Logger.error $ "Component '" <> comp <> "' not found in package."
-                liftIO exitFailure
-              _ : _ : _ -> do
-                Logger.error $ "Multiple components named '" <> comp <> "' found in the package."
-                liftIO exitFailure
-              [ComponentType _ _ deps _ _ _] -> pure deps
+      -- unlessM (liftIO $ doesDirectoryExist dir) do
+      --   -- TODO: do transitively: also download all dependencies after
+      --   (_, components, Configuration _ extra) <- downloadAndExtract (\_ _ _ -> dir) src env
+      --   deps <- case (component, components) of
+      --     (Nothing, _ : _ : _) -> do
+      --       Logger.error "Cannot choose a single component from the package."
+      --       liftIO exitFailure
+      --     (Nothing, [ComponentType _ _ deps _ _ _]) -> pure deps
+      --     (_, []) -> do
+      --       Logger.error "No component found in package."
+      --       liftIO exitFailure
+      --     (Just comp, cs) ->
+      --       case filter (\(ComponentType c _ _ _ _ _) -> c == comp) cs of
+      --         [] -> do
+      --           Logger.error $ "Component '" <> comp <> "' not found in package."
+      --           liftIO exitFailure
+      --         _ : _ : _ -> do
+      --           Logger.error $ "Multiple components named '" <> comp <> "' found in the package."
+      --           liftIO exitFailure
+      --         [ComponentType _ _ deps _ _ _] -> pure deps
 
-        forM_ deps \(Version name range) -> fetchPackageCommand name (Just range) ltsName env
+      --   forM_ deps \(Version name range) -> fetchPackageCommand name (Just range) ltsName env
 
-        pure ()
+      pure ()

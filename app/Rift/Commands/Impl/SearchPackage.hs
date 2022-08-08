@@ -1,5 +1,6 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -10,27 +11,30 @@
 
 module Rift.Commands.Impl.SearchPackage (searchPackageCommand) where
 
-import Control.Exception (catch, finally)
+import Control.Exception (finally)
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Bifunctor (first)
-import Data.Foldable (foldl')
+import Data.Bifunctor (bimap, first)
 import Data.Function ((&))
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.List as List
-import Data.Maybe (mapMaybe)
+import Data.Maybe (fromMaybe, isNothing, mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
+import Dhall (auto, inputFile)
 import Rift.Commands.Impl.Utils.GitTags (fetchAllTags)
+import Rift.Commands.Impl.Utils.Paths (ltsPath, packagePath, projectDhall)
 import Rift.Config.PackageSet
+import Rift.Config.Project (ComponentType (..), ProjectType)
 import Rift.Environment (Environment (..))
 import Rift.Internal.LockFile (withLockFile)
 import qualified Rift.Logger as Logger
 import qualified System.Console.ANSI as ANSI
+import System.Directory (doesDirectoryExist)
 import System.Exit (exitFailure)
-import System.FilePath ((</>))
+import System.FilePath ((<.>), (</>))
 import System.IO (stdout)
 import Turtle (ExitCode (..), empty, procStrictWithErr)
 
@@ -38,7 +42,7 @@ searchPackageCommand :: MonadIO m => Text -> Environment -> m ()
 searchPackageCommand pkgName env@Env {..} = do
   let pkgsHome = riftCache </> "pkgs"
 
-  liftIO $ withLockFile (riftHome </> "package-set.lock") do
+  liftIO $ withLockFile (riftHome </> "package-set" <.> "lock") do
     allTags <- fetchAllTags git pkgsHome
 
     let restoreToUnstable = do
@@ -52,7 +56,7 @@ searchPackageCommand pkgName env@Env {..} = do
                 <> Text.unlines (mappend "> " <$> Text.lines err)
             exitFailure
 
-    allVersionsInAllLTSs <- (HashMap.toList <$> queryAllTagsForPackage git pkgsHome (allTags <> ["unstable"])) `finally` restoreToUnstable
+    allVersionsInAllLTSs <- (HashMap.toList <$> queryAllTagsForPackage env (allTags <> ["unstable"])) `finally` restoreToUnstable
     let sortedPackagesOnLTS = (first readLTSVersion <$> allVersionsInAllLTSs) & mapMaybe (\(m, x) -> (,x) <$> m) & List.sort
 
     case sortedPackagesOnLTS of
@@ -64,9 +68,9 @@ searchPackageCommand pkgName env@Env {..} = do
         Text.hPutStrLn stdout " not found in the current package set."
         Text.hPutStrLn stdout "Maybe you want to update it with 'rift package update'?"
       _ -> do
-        let tmpPackages = HashMap.fromList $ sortedPackagesOnLTS >>= \(lts, vs) -> vs <&> \(version, broken) -> (version, (lts, broken))
+        let tmpPackages = HashMap.fromList $ sortedPackagesOnLTS >>= \(lts, vs) -> vs <&> \(version, broken, deprecated) -> (version, (lts, broken, deprecated))
             keysInOrder = reverse $ fst <$> sortedPackagesOnLTS
-            packages = HashMap.foldlWithKey' (\m version (lts, broken) -> HashMap.insertWith (<>) lts [(version, broken)] m) mempty tmpPackages
+            packages = HashMap.foldlWithKey' (\m version (lts, broken, deprecated) -> HashMap.insertWith (<>) lts [(version, broken, deprecated)] m) mempty tmpPackages
 
         Text.hPutStr stdout "Found package "
         ANSI.hSetSGR stdout [ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.Magenta, ANSI.SetConsoleIntensity ANSI.BoldIntensity]
@@ -77,48 +81,73 @@ searchPackageCommand pkgName env@Env {..} = do
         forM_ keysInOrder \k -> do
           let versions = packages HashMap.! k
 
-          case versions of
-            [] -> pure ()
-            [(ver, broken)] -> do
-              Text.hPutStr stdout "- version "
-              outputVersion stdout ver broken
-            vs -> do
-              Text.hPutStr stdout "- versions "
-              outputVersions stdout vs
-          outputLTS stdout k
+          if null versions
+            then pure ()
+            else do
+              outputLTS stdout k
+              outputVersions stdout versions
   where
-    queryAllTagsForPackage gitExe pkgsHome tags = do
-      foldl' (HashMap.unionWith (<>)) mempty <$> forM tags \t -> do
-        (exit, _, _) <- procStrictWithErr (Text.pack gitExe) ["-C", Text.pack pkgsHome, "checkout", t, "--force", "--detach"] empty
+    queryAllTagsForPackage env tags = do
+      (uncached, versionsFound) <-
+        bimap mconcat (HashMap.unionWith (<>) mempty . mconcat) . unzip <$> forM tags \t -> do
+          ltsDir <- ltsPath riftCache (fromMaybe Unstable $ readLTSVersion t)
+          case ltsDir of
+            Nothing -> do
+              Logger.warn $ "LTS '" <> t <> "' is not cached. It will be ignored when searching for packages."
+              pure ([t], mempty)
+            Just ltsDir -> do
+              Snapshot _ _ packageSet <- liftIO (snapshotFromDhallFile (ltsDir </> "lts" </> "packages" </> "set" <.> "dhall") env)
 
-        if exit /= ExitSuccess
-          then mempty <$ Logger.warn ("Failed to checkout tag '" <> t <> "'.\nIgnoring any package in this LTS version.")
-          else do
-            ((Just <$> snapshotFromDhallFile (pkgsHome </> "packages" </> "set.dhall") env) `catch` \(_ :: ExitCode) -> pure Nothing) >>= \case
-              Nothing -> pure mempty
-              Just Snapshot {..} -> do
-                let versionsOfPackageInLTS = filter (\Pkg {..} -> pkgName == name) packageSet
-                pure $ HashMap.fromListWith (<>) $ versionsOfPackageInLTS <&> \Pkg {..} -> (t, [(version, broken)])
+              let versionsOfPackageInLTS = filter (\Pkg {..} -> pkgName == name) packageSet
+              versions <- forM versionsOfPackageInLTS \pkg@Pkg {..} -> do
+                let pkgPath = packagePath pkg (ltsDir </> "sources")
+                pathExists <- liftIO $ doesDirectoryExist pkgPath
+                if not pathExists
+                  then pure (t, [(Nothing, broken, deprecated)])
+                  else do
+                    cs <- liftIO (inputFile auto (pkgPath </> projectDhall) :: IO ProjectType)
+                    let retained = filter (\(ComponentType name _ _ _ _ _) -> isNothing component || Just name == component) cs
+                    case retained of
+                      [] -> pure (t, [])
+                      _ : _ : _ -> pure (t, [])
+                      [ComponentType _ version _ _ _ _] -> pure (t, [(Just version, broken, deprecated)])
+              pure ([], HashMap.fromListWith (<>) versions)
 
-    _2 ~(_, x, _) = x
+      when (not $ null uncached) do
+        Logger.warn "Some LTSes were not present in the global cache.\nYou may want to run 'rift package update' to fix this."
+      when (any (any (\(v, _, _) -> isNothing v)) $ HashMap.elems versionsFound) do
+        Logger.warn $ "Some versions were not cached. Run 'rift package fetch " <> pkgName <> "' to cache them."
 
-    outputVersion handle version isBroken = do
-      ANSI.hSetSGR handle [ANSI.SetColor ANSI.Foreground ANSI.Dull $ if isBroken then ANSI.Red else ANSI.Green]
-      Text.hPutStr handle version
-      when isBroken do
-        Text.hPutStr handle " (broken)"
+      pure versionsFound
+
+    outputVersion handle version isBroken isDeprecated = do
+      Text.hPutStr handle "  - version "
+      let version' = case version of
+            Nothing -> "(not cached)"
+            Just v -> v
+      if
+          | isBroken -> do
+            ANSI.hSetSGR handle [ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.Red]
+            Text.hPutStr handle version'
+            Text.hPutStr handle " (broken)"
+          | isDeprecated -> do
+            ANSI.hSetSGR handle [ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.Yellow]
+            Text.hPutStr handle version'
+            Text.hPutStr handle " (deprecated)"
+          | otherwise -> do
+            ANSI.hSetSGR handle [ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.Green]
+            Text.hPutStr handle version'
       ANSI.hSetSGR handle [ANSI.Reset]
 
     outputLTS handle name = do
-      Text.hPutStr handle " in "
+      Text.hPutStr handle "- in LTS "
       ANSI.hSetSGR handle [ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.Cyan]
       Text.hPutStr handle $ Text.pack (show name)
       ANSI.hSetSGR handle [ANSI.Reset]
-      Text.hPutStrLn handle ""
+      Text.hPutStrLn handle ":"
 
     outputVersions _ [] = pure ()
-    outputVersions handle [(version, isBroken)] = outputVersion handle version isBroken
-    outputVersions handle ((version, isBroken) : vs) = do
-      outputVersion handle version isBroken
-      Text.hPutStr handle ", "
+    outputVersions handle ((version, isBroken, isDeprecated) : vs) = do
+      outputVersion handle version isBroken isDeprecated
+      Text.hPutStrLn handle ""
       outputVersions handle vs

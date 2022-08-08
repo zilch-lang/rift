@@ -29,8 +29,11 @@ import Dhall (auto, inputFile)
 import Network.HTTP.Req (GET (..), MonadHttp, NoReqBody (..), lbsResponse, req, responseBody, responseHeader, useURI)
 import Rift.Commands.Impl.Utils.Directory (copyDirectoryRecursive)
 import Rift.Commands.Impl.Utils.Download (downloadAndExtract)
+import Rift.Commands.Impl.Utils.Paths (projectDhall, riftDhall)
+import Rift.Config.Configuration (Configuration (..))
 import Rift.Config.PackageSet (Snapshot (..), snapshotFromDhallFile)
-import Rift.Config.Project (ComponentType (..), Dependency (..), ProjectType (..), nameOf)
+import Rift.Config.Project (ComponentType (..), ProjectType (..), nameOf)
+import Rift.Config.Source (Source)
 import Rift.Environment (Environment, git, riftCache)
 import qualified Rift.Logger as Logger
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory, removeDirectoryRecursive)
@@ -77,7 +80,8 @@ import Turtle (empty, procStrictWithErr)
 --   6. I don't know
 buildProjectCommand :: (MonadIO m, MonadHttp m, MonadMask m) => Bool -> Integer -> Bool -> [Text] -> Environment -> m ()
 buildProjectCommand dryRun nbCores dirtyFiles componentsToBuild env = do
-  !project@(ProjectType components lts extraDeps) <- liftIO $ inputFile auto "project.dhall"
+  !components <- liftIO $ inputFile auto projectDhall
+  Configuration lts extraDeps <- liftIO $ inputFile auto riftDhall
 
   let ltsTag = show lts
       ltsHashFile = riftCache env </> "hashes" </> ltsTag <.> "hash"
@@ -109,11 +113,11 @@ gatherDependencies :: (MonadIO m) => Snapshot -> [ComponentType] -> m ([Text], [
 gatherDependencies _ [] = pure ([], [])
 gatherDependencies snapshot (ComponentType _ _ deps _ _ _ : cs) = pure ([], [])
 
-fetchExtraDependencies :: (MonadIO m, MonadHttp m, MonadMask m) => Environment -> [Dependency] -> m (Map FilePath ProjectType)
+fetchExtraDependencies :: (MonadIO m, MonadHttp m, MonadMask m) => Environment -> [Source] -> m (Map FilePath ProjectType)
 fetchExtraDependencies _ [] = pure mempty
 fetchExtraDependencies env (dep : deps) = do
   done <- fetchExtraDependencies env deps
-  (path, project) <- downloadAndExtract mkPath dep env
+  (path, project, _) <- downloadAndExtract mkPath dep env
   pure (Map.insert path project done)
   where
     mkPath url rev True =

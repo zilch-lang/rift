@@ -17,8 +17,9 @@ import qualified Data.Text.IO as Text
 import Dhall (auto, inputFile)
 import Network.HTTP.Req (MonadHttp)
 import Rift.Commands.Impl.Utils.Download (downloadAndExtract)
+import Rift.Config.Configuration (Configuration (..))
 import Rift.Config.PackageSet (LTSVersion (..), Package (..), Snapshot (..), readLTSVersion)
-import Rift.Config.Project (ComponentType (..), ProjectType (..), VersionRange (..), packageSourceToDependency)
+import Rift.Config.Project (ComponentType (..), ProjectType (..), VersionRange (..))
 import Rift.Environment (Environment (..))
 import qualified Rift.Logger as Logger
 import System.Directory (doesDirectoryExist, doesFileExist)
@@ -55,12 +56,12 @@ fetchPackageCommand name versionConstraint ltsName env = do
 
       unlessM (liftIO $ doesDirectoryExist dir) do
         -- TODO: do transitively: also download all dependencies after
-        (_, ProjectType components _ extra) <- downloadAndExtract (\_ _ _ -> dir) (packageSourceToDependency src) env
+        (_, components, Configuration _ extra) <- downloadAndExtract (\_ _ _ -> dir) src env
         deps <- case (component, components) of
           (Nothing, _ : _ : _) -> do
             Logger.error "Cannot choose a single component from the package."
             liftIO exitFailure
-          (Nothing, [c]) -> do undefined
+          (Nothing, [ComponentType _ _ deps _ _ _]) -> pure deps
           (_, []) -> do
             Logger.error "No component found in package."
             liftIO exitFailure

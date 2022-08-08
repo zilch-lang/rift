@@ -22,6 +22,7 @@ import Dhall.Marshal.Encode (ToDhall (..), encodeConstructor, encodeConstructorW
 import Dhall.Src (Src)
 import Dhall.TypeCheck (TypeError)
 import GHC.Generics (Generic)
+import Rift.Config.Source (Source)
 import Rift.Environment (Environment (..))
 import qualified Rift.Logger as Logger
 import System.Exit (exitFailure)
@@ -41,30 +42,11 @@ ltsOf (Snapshot lts _ _) = lts
 data Package = Pkg
   { name :: Text,
     version :: Text,
-    src :: PackageSource,
+    src :: Source,
     component :: Maybe Text,
     maintainers :: [Text],
     broken :: Bool
   }
-  deriving (Generic, Show)
-
-data PackageSource
-  = Git
-      { url :: Text,
-        rev :: Text
-      }
-  | Tar
-      { url :: Text,
-        sha256 :: Text
-      }
-  | TarGz
-      { url :: Text,
-        sha256 :: Text
-      }
-  | Zip
-      { url :: Text,
-        sha256 :: Text
-      }
   deriving (Generic, Show)
 
 data LTSVersion
@@ -123,37 +105,6 @@ instance FromDhall Package where
         <*> field "component" auto
         <*> field "maintainers" auto
         <*> field "broken" auto
-
-instance FromDhall PackageSource where
-  autoWith _ =
-    union $
-      fold
-        [ constructor "Git" git,
-          constructor "Tar" tar,
-          constructor "TarGz" targz,
-          constructor "Zip" zip
-        ]
-    where
-      git =
-        record $
-          Git
-            <$> field "url" auto
-            <*> field "rev" auto
-      tar =
-        record $
-          Tar
-            <$> field "url" auto
-            <*> field "sha256" auto
-      targz =
-        record $
-          TarGz
-            <$> field "url" auto
-            <*> field "sha256" auto
-      zip =
-        record $
-          Zip
-            <$> field "url" auto
-            <*> field "sha256" auto
 
 -- | Read an LTS version which is either @unstable@ or of the form @lts-<major>.<minor>@.
 readLTSVersion :: Text -> Maybe LTSVersion

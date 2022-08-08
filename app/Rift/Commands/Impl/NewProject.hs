@@ -19,14 +19,15 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import Dhall.Core (Directory (..), File (..), Scheme (..), pretty)
-import qualified Dhall.Core as Dhall (Binding (..), Chunks (..), Expr (..), FieldSelection (..), Import (..), ImportHashed (..), ImportMode (..), ImportType (..), RecordField (..), URL (..), Var (..))
+import qualified Dhall.Core as Dhall (Binding (..), Chunks (..), Directory (..), Expr (..), FieldSelection (..), File (..), FilePrefix (..), Import (..), ImportHashed (..), ImportMode (..), ImportType (..), RecordField (..), URL (..), Var (..))
+import Rift.Commands.Impl.Utils.Paths (envDhall, projectDhall, riftDhall)
 import Rift.Config.PackageSet (LTSVersion (..), readLTSVersion)
 import Rift.Config.Template
 import Rift.Environment (Environment (..))
 import qualified Rift.Logger as Logger
-import System.Directory (createDirectory, doesDirectoryExist, listDirectory)
+import System.Directory (createDirectory, createDirectoryIfMissing, doesDirectoryExist, listDirectory)
 import System.Exit (exitFailure)
-import System.FilePath ((</>))
+import System.FilePath ((<.>), (</>))
 import Text.RawString.QQ (r)
 import Turtle (ExitCode (..), empty, procStrictWithErr)
 
@@ -73,17 +74,21 @@ newProjectCommand path name template force Env {..} = do
   -- > ├┬ src
   -- > │└─ Main.zc
   -- > ├─ .gitignore
+  -- > ├─ env.dhall
   -- > ├─ LICENSE
   -- > ├─ project.dhall
-  -- > └─ README.md
+  -- > ├─ README.md
+  -- > └─ rift.dhall
 
   liftIO do
-    createDirectory $ path </> "src"
+    createDirectoryIfMissing True $ path </> "src"
     Text.writeFile (path </> ".gitignore") gitignoreTemplate
-    Text.writeFile (path </> "README.md") $ readmeTemplate projectName
-    Text.writeFile (path </> "project.dhall") $ projectDhallTemplate projectName projectTemplate lastLTS
+    Text.writeFile (path </> "README" <.> "md") $ readmeTemplate projectName
+    Text.writeFile (path </> projectDhall) $ projectDhallTemplate projectName projectTemplate
+    Text.writeFile (path </> envDhall) $ envDhallTemplate
+    Text.writeFile (path </> riftDhall) $ riftDhallTemplate lastLTS
     when (projectTemplate == Executable) do
-      Text.writeFile (path </> "src" </> "Main.zc") $ mainZCTemplate projectName
+      Text.writeFile (path </> "src" </> "main" <.> "zc") $ mainZCTemplate projectName
 
   Logger.info "New project successfully initialized!"
   where
@@ -120,8 +125,42 @@ let main() : io unit :=
     <> [r|!")
 |]
 
-projectDhallTemplate :: Text -> Template -> Text -> Text
-projectDhallTemplate projectName projectTemplate lastLTS =
+envDhallTemplate :: Text
+envDhallTemplate =
+  let env = Dhall.Embed $ Dhall.Import (Dhall.ImportHashed Nothing $ Dhall.Env "RIFT_CFG") Dhall.Code
+
+      link = Dhall.Embed $ Dhall.Import (Dhall.ImportHashed Nothing $ Dhall.Remote $ Dhall.URL HTTPS "raw.githubusercontent.com" (File (Directory ["master", "rift", "zilch-lang"]) "default-config.dhall") Nothing Nothing) Dhall.Code
+   in pretty $ Dhall.ImportAlt env link
+
+riftDhallTemplate :: Text -> Text
+riftDhallTemplate lastLTS =
+  pretty $
+    Dhall.Let
+      (Dhall.Binding Nothing "Cfg" Nothing Nothing Nothing $ Dhall.Embed $ Dhall.Import (Dhall.ImportHashed Nothing $ Dhall.Local Dhall.Here $ Dhall.File (Dhall.Directory []) "env.dhall") Dhall.Code)
+      $ Dhall.Let
+        (Dhall.Binding Nothing "LTS" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "LTS" Nothing))
+        $ Dhall.Let
+          (Dhall.Binding Nothing "Dependency" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "Dependency" Nothing))
+          $ Dhall.Let
+            (Dhall.Binding Nothing "Configuration" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "Configuration" Nothing))
+            $ Dhall.RecordCompletion
+              (Dhall.Var $ Dhall.V "Configuration" 0)
+              ( Dhall.RecordLit
+                  [("lts", Dhall.RecordField Nothing (toDhall lastLTS) Nothing Nothing)]
+              )
+  where
+    toDhall lts = case readLTSVersion lts of
+      Just (LTS major minor) ->
+        Dhall.App
+          ( Dhall.App
+              (Dhall.Field (Dhall.Var $ Dhall.V "LTS" 0) (Dhall.FieldSelection Nothing "stable" Nothing))
+              (Dhall.NaturalLit $ fromIntegral major)
+          )
+          (Dhall.NaturalLit $ fromIntegral minor)
+      _ -> Dhall.Field (Dhall.Var $ Dhall.V "LTS" 0) (Dhall.FieldSelection Nothing "unstable" Nothing)
+
+projectDhallTemplate :: Text -> Template -> Text
+projectDhallTemplate projectName projectTemplate =
   let componentTemplate = case projectTemplate of
         Executable ->
           Dhall.ListLit
@@ -154,13 +193,9 @@ projectDhallTemplate projectName projectTemplate lastLTS =
             (Just $ Dhall.App Dhall.List $ Dhall.Field (Dhall.Var $ Dhall.V "Component" 0) (Dhall.FieldSelection Nothing "Type" Nothing))
             []
         _ -> Dhall.Assert $ Dhall.BoolLit False
-
-      env = Dhall.Embed $ Dhall.Import (Dhall.ImportHashed Nothing $ Dhall.Env "RIFT_CFG") Dhall.Code
-
-      link = Dhall.Embed $ Dhall.Import (Dhall.ImportHashed Nothing $ Dhall.Remote $ Dhall.URL HTTPS "raw.githubusercontent.com" (File (Directory ["master", "rift", "zilch-lang"]) "default-config.dhall") Nothing Nothing) Dhall.Code
    in pretty $
         Dhall.Let
-          (Dhall.Binding Nothing "Cfg" Nothing Nothing Nothing $ Dhall.ImportAlt env link)
+          (Dhall.Binding Nothing "Cfg" Nothing Nothing Nothing $ Dhall.Embed $ Dhall.Import (Dhall.ImportHashed Nothing $ Dhall.Local Dhall.Here $ Dhall.File (Dhall.Directory []) "env.dhall") Dhall.Code)
           $ Dhall.Let
             (Dhall.Binding Nothing "Project" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "Project" Nothing))
             $ Dhall.Let
@@ -169,21 +204,4 @@ projectDhallTemplate projectName projectTemplate lastLTS =
                 (Dhall.Binding Nothing "Component" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "Component" Nothing))
                 $ Dhall.Let
                   (Dhall.Binding Nothing "Dependency" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "Dependency" Nothing))
-                  $ Dhall.Let
-                    (Dhall.Binding Nothing "LTS" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "LTS" Nothing))
-                    $ Dhall.RecordCompletion
-                      (Dhall.Var $ Dhall.V "Project" 0)
-                      $ Dhall.RecordLit
-                        [ ("lts", Dhall.RecordField Nothing (toDhall lastLTS) Nothing Nothing),
-                          ("components", Dhall.RecordField Nothing (componentTemplate) Nothing Nothing)
-                        ]
-  where
-    toDhall lts = case readLTSVersion lts of
-      Just (LTS major minor) ->
-        Dhall.App
-          ( Dhall.App
-              (Dhall.Field (Dhall.Var $ Dhall.V "LTS" 0) (Dhall.FieldSelection Nothing "stable" Nothing))
-              (Dhall.NaturalLit $ fromIntegral major)
-          )
-          (Dhall.NaturalLit $ fromIntegral minor)
-      _ -> Dhall.Field (Dhall.Var $ Dhall.V "LTS" 0) (Dhall.FieldSelection Nothing "unstable" Nothing)
+                  $ componentTemplate

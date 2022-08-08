@@ -23,7 +23,10 @@ import Data.Text.Read (decimal)
 import Dhall (auto, inputFile)
 import Network.HTTP.Req (GET (GET), MonadHttp, NoReqBody (..), lbsResponse, req, responseBody, responseHeader, useURI)
 import Rift.Commands.Impl.Utils.Directory (copyDirectoryRecursive)
-import Rift.Config.Project (Dependency (..), ProjectType (..))
+import Rift.Commands.Impl.Utils.Paths (projectDhall, riftDhall)
+import Rift.Config.Configuration (Configuration)
+import Rift.Config.Project (ProjectType (..))
+import Rift.Config.Source (Location (..), Source (..))
 import Rift.Environment (Environment (..))
 import qualified Rift.Logger as Logger
 import System.Directory (doesDirectoryExist, doesFileExist, listDirectory, removeDirectoryRecursive)
@@ -33,19 +36,19 @@ import System.IO.Temp (withSystemTempDirectory)
 import qualified Text.URI as URI
 import Turtle (empty, procStrictWithErr)
 
-downloadAndExtract :: (MonadIO m, MonadHttp m, MonadMask m) => (Text -> Text -> Bool -> FilePath) -> Dependency -> Environment -> m (FilePath, ProjectType)
+downloadAndExtract :: (MonadIO m, MonadHttp m, MonadMask m) => (Text -> Text -> Bool -> FilePath) -> Source -> Environment -> m (FilePath, ProjectType, Configuration)
 downloadAndExtract dir dep env =
   case dep of
-    TarDep url sha256 -> unpackArchive url sha256 \path dir tar -> do
+    Tar (Remote url) sha256 -> unpackArchive url sha256 \path dir tar -> do
       liftIO . Tar.unpack dir $ Tar.read tar
       liftIO $ copyArchive url dir path "Tarball" =<< listDirectory dir
-    TarGzDep url sha256 -> unpackArchive url sha256 \path dir tar -> do
+    TarGz (Remote url) sha256 -> unpackArchive url sha256 \path dir tar -> do
       liftIO . Tar.unpack dir . Tar.read $ GZip.decompress tar
       liftIO $ copyArchive url dir path "GZipped tarball" =<< listDirectory dir
-    ZipDep url sha256 -> unpackArchive url sha256 \path dir zip -> do
+    Zip (Remote url) sha256 -> unpackArchive url sha256 \path dir zip -> do
       liftIO . Zip.extractFilesFromArchive [Zip.OptDestination dir] $ Zip.toArchive zip
       liftIO $ copyArchive url dir path "Zipped" =<< listDirectory dir
-    GitDep url rev -> do
+    Git (Remote url) rev -> do
       let path = riftCache env </> dir url rev True
       unlessM (liftIO $ doesDirectoryExist path) do
         Logger.info $ "Checking git repository '" <> url <> "' at revision '" <> rev <> "'..."
@@ -79,14 +82,15 @@ downloadAndExtract dir dep env =
 
           removeDirectoryRecursive (dir </> ".git")
 
-          unlessM (liftIO . doesFileExist $ dir </> "project.dhall") do
-            Logger.error $ "Zipped file '" <> url <> "' does not contain a Rift project (file 'project.dhall' not present)"
+          unlessM (liftIO . doesFileExist $ dir </> projectDhall) do
+            Logger.error $ "Zipped file '" <> url <> "' does not contain a Rift project (file '" <> Text.pack projectDhall <> "' not present)"
             liftIO exitFailure
 
           liftIO $ copyDirectoryRecursive dir path (const True)
 
-      project <- liftIO $ inputFile auto (path </> "project.dhall")
-      pure (path, project)
+      project <- liftIO $ inputFile auto (path </> projectDhall)
+      configuration <- liftIO $ inputFile auto (path </> riftDhall)
+      pure (path, configuration, project)
   where
     unpackArchive url sha256 unpack = do
       let path = riftCache env </> dir url sha256 False
@@ -111,21 +115,22 @@ downloadAndExtract dir dep env =
 
         withSystemTempDirectory "rift" \dir -> unpack path dir resp
 
-      project <- liftIO $ inputFile auto (path </> "project.dhall")
+      project <- liftIO $ inputFile auto (path </> projectDhall)
+      configuration <- liftIO $ inputFile auto (path </> riftDhall)
 
-      pure (path, project)
+      pure (path, configuration, project)
 
     copyArchive url _ _ kind [] = do
       Logger.error $ kind <> " file '" <> url <> "' is empty."
       liftIO exitFailure
     copyArchive url dir path kind [dir2] = do
       let dir' = dir </> dir2
-      unlessM (liftIO . doesFileExist $ dir' </> "project.dhall") do
-        Logger.error $ kind <> " file '" <> url <> "' does not contain a Rift project (file 'project.dhall' not present)"
+      unlessM (liftIO . doesFileExist $ dir' </> projectDhall) do
+        Logger.error $ kind <> " file '" <> url <> "' does not contain a Rift project (file '" <> Text.pack projectDhall <> "' not present)"
         liftIO exitFailure
       liftIO $ copyDirectoryRecursive dir' path (const True)
     copyArchive url dir path kind _ = do
-      unlessM (liftIO . doesFileExist $ dir </> "project.dhall") do
-        Logger.error $ kind <> " file '" <> url <> "' does not contain a Rift project (file 'project.dhall' not present)"
+      unlessM (liftIO . doesFileExist $ dir </> projectDhall) do
+        Logger.error $ kind <> " file '" <> url <> "' does not contain a Rift project (file '" <> Text.pack projectDhall <> "' not present)"
         liftIO exitFailure
       liftIO $ copyDirectoryRecursive dir path (const True)

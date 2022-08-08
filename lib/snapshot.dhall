@@ -1,6 +1,6 @@
 let Package =
       ./package.dhall
-        sha256:462174c7abda6c221ffc4ae8c6e893f437bd0b2cbddc6abb4886abf3bf17f978
+        sha256:3d25d87988abbe75fbc3b5dc6a5af58adf512fc2b42cbb1fb9564d6b24bd6765
 
 let LTS =
       ./lts.dhall

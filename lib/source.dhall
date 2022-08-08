@@ -8,7 +8,22 @@ in  < Git :
         , -- | The revision to pull the source code from (can be a branch name e.g. @master@ or a tag e.g. @v1.0.0@)
           rev : Text
         }
-    | Tar : Location
-    | TarGz : Location
-    | Zip : Location
+    | Tar :
+        { -- | The URL of the @.tar@ file
+          url : Location
+        , -- | The SHA-256 checksum of the file
+          sha256 : Text
+        }
+    | TarGz :
+        { -- | The URL of the @.tar@ file
+          url : Location
+        , -- | The SHA-256 checksum of the file
+          sha256 : Text
+        }
+    | Zip :
+        { -- | The URL of the @.tar@ file
+          url : Location
+        , -- | The SHA-256 checksum of the file
+          sha256 : Text
+        }
     >

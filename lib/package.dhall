@@ -1,6 +1,6 @@
 let Source =
       ./source.dhall
-        sha256:8fc3205ee05bdee3f8e4f553c96f898c14f7e9cb1a2150345cd7316694c4f8cb
+        sha256:ffaf30bb1622a6263e063a95de730c38d44c235ebe540052d7b30c750404e4b4
 
 in  { Type =
         { -- | The name of the package

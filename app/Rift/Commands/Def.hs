@@ -42,6 +42,8 @@ data PkgCommand
       -- ^ An optional version constraint to satisfy.
       (Maybe Text)
       -- ^ The LTS where to get the package from (defaults to the latest if not specified).
+      Bool
+      -- ^ Whether to force redownloading/unpacking the package.
 
 -- | A command acting on the current project.
 data ProjCommand
@@ -83,7 +85,7 @@ instance (MonadIO m, MonadHttp m, MonadMask m) => CommandExecutor Command m wher
 instance (MonadIO m, MonadHttp m, MonadMask m) => CommandExecutor PkgCommand m where
   executeCommand UpdatePackageSet e = updatePackageSetCommand e
   executeCommand (SearchPackage p) e = searchPackageCommand p e
-  executeCommand (FetchPackage n c l) e = fetchPackageCommand n c l e
+  executeCommand (FetchPackage n c l f) e = fetchPackageCommand n c l f e
   executeCommand _ e = error "not yet implemented"
 
 instance (MonadIO m, MonadHttp m, MonadMask m) => CommandExecutor ProjCommand m where

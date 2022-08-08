@@ -1,6 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 
@@ -23,8 +24,9 @@ import Data.Text.Read (decimal)
 import Dhall (auto, inputFile)
 import Network.HTTP.Req (GET (GET), MonadHttp, NoReqBody (..), lbsResponse, req, responseBody, responseHeader, useURI)
 import Rift.Commands.Impl.Utils.Directory (copyDirectoryRecursive)
-import Rift.Commands.Impl.Utils.Paths (projectDhall, riftDhall)
+import Rift.Commands.Impl.Utils.Paths (packagePath, projectDhall, riftDhall)
 import Rift.Config.Configuration (Configuration)
+import Rift.Config.PackageSet (Package (..))
 import Rift.Config.Project (ProjectType (..))
 import Rift.Config.Source (Location (..), Source (..))
 import Rift.Environment (Environment (..))
@@ -36,7 +38,24 @@ import System.IO.Temp (withSystemTempDirectory)
 import qualified Text.URI as URI
 import Turtle (empty, procStrictWithErr)
 
-downloadAndExtract :: (MonadIO m, MonadHttp m, MonadMask m) => (Text -> Text -> Bool -> FilePath) -> Source -> Environment -> m (FilePath, ProjectType, Configuration)
+fetchPackageTo :: (MonadIO m, MonadHttp m, MonadMask m) => FilePath -> FilePath -> Bool -> Environment -> Package -> m ()
+fetchPackageTo ltsDir extraDepDir force env pkg@Pkg {..} = do
+  let pkgDir = packagePath pkg (ltsDir </> "sources")
+  (_, components, configuration) <- do
+    pathExists <- liftIO $ doesDirectoryExist pkgDir
+
+    if not force && pathExists
+      then do
+        Logger.info $ "Package '" <> name <> "' is already cached.\nUse --force to redownload it."
+
+        project <- liftIO $ inputFile auto (pkgDir </> projectDhall)
+        configuration <- liftIO $ inputFile auto (pkgDir </> riftDhall)
+        pure (pkgDir, project, configuration)
+      else downloadAndExtract pkgDir src env
+
+  pure ()
+
+downloadAndExtract :: (MonadIO m, MonadHttp m, MonadMask m) => FilePath -> Source -> Environment -> m (FilePath, ProjectType, Configuration)
 downloadAndExtract dir dep env =
   case dep of
     Tar (Remote url) sha256 -> unpackArchive url sha256 \path dir tar -> do
@@ -49,76 +68,74 @@ downloadAndExtract dir dep env =
       liftIO . Zip.extractFilesFromArchive [Zip.OptDestination dir] $ Zip.toArchive zip
       liftIO $ copyArchive url dir path "Zipped" =<< listDirectory dir
     Git (Remote url) rev -> do
-      let path = riftCache env </> dir url rev True
-      unlessM (liftIO $ doesDirectoryExist path) do
-        Logger.info $ "Checking git repository '" <> url <> "' at revision '" <> rev <> "'..."
+      let path = dir
+      Logger.info $ "Checking git repository '" <> url <> "' at revision '" <> rev <> "'..."
 
-        liftIO $ withSystemTempDirectory "rift" \dir -> do
-          let gitexe = Text.pack $ git env
-          (exit, out, err) <- procStrictWithErr (Text.pack $ git env) ["-C", Text.pack dir, "clone", url, "."] empty
-          unless (exit == ExitSuccess) do
-            Logger.error $
-              "Could not fetch git repository at '" <> url <> "'.\n* Standard output:\n"
-                <> Text.unlines (mappend "> " <$> Text.lines out)
-                <> "\n* Standard error:\n"
-                <> Text.unlines (mappend "> " <$> Text.lines err)
-            exitFailure
-          (exit, out, err) <- procStrictWithErr gitexe ["-C", Text.pack dir, "checkout", rev] empty
-          unless (exit == ExitSuccess) do
-            Logger.error $
-              "Could not fetch git repository at '" <> url <> "'.\n* Standard output:\n"
-                <> Text.unlines (mappend "> " <$> Text.lines out)
-                <> "\n* Standard error:\n"
-                <> Text.unlines (mappend "> " <$> Text.lines err)
-            exitFailure
-          (exit, out, err) <- procStrictWithErr gitexe ["-C", Text.pack dir, "reset", "--hard"] mempty
-          unless (exit == ExitSuccess) do
-            Logger.error $
-              "Could not fetch git repository at '" <> url <> "'.\n* Standard output:\n"
-                <> Text.unlines (mappend "> " <$> Text.lines out)
-                <> "\n* Standard error:\n"
-                <> Text.unlines (mappend "> " <$> Text.lines err)
-            exitFailure
+      liftIO $ withSystemTempDirectory "rift" \dir -> do
+        let gitexe = Text.pack $ git env
+        (exit, out, err) <- procStrictWithErr (Text.pack $ git env) ["-C", Text.pack dir, "clone", url, "."] empty
+        unless (exit == ExitSuccess) do
+          Logger.error $
+            "Could not fetch git repository at '" <> url <> "'.\n* Standard output:\n"
+              <> Text.unlines (mappend "> " <$> Text.lines out)
+              <> "\n* Standard error:\n"
+              <> Text.unlines (mappend "> " <$> Text.lines err)
+          exitFailure
+        (exit, out, err) <- procStrictWithErr gitexe ["-C", Text.pack dir, "checkout", rev] empty
+        unless (exit == ExitSuccess) do
+          Logger.error $
+            "Could not fetch git repository at '" <> url <> "'.\n* Standard output:\n"
+              <> Text.unlines (mappend "> " <$> Text.lines out)
+              <> "\n* Standard error:\n"
+              <> Text.unlines (mappend "> " <$> Text.lines err)
+          exitFailure
+        (exit, out, err) <- procStrictWithErr gitexe ["-C", Text.pack dir, "reset", "--hard"] mempty
+        unless (exit == ExitSuccess) do
+          Logger.error $
+            "Could not fetch git repository at '" <> url <> "'.\n* Standard output:\n"
+              <> Text.unlines (mappend "> " <$> Text.lines out)
+              <> "\n* Standard error:\n"
+              <> Text.unlines (mappend "> " <$> Text.lines err)
+          exitFailure
 
-          removeDirectoryRecursive (dir </> ".git")
+        removeDirectoryRecursive (dir </> ".git")
 
-          unlessM (liftIO . doesFileExist $ dir </> projectDhall) do
-            Logger.error $ "Zipped file '" <> url <> "' does not contain a Rift project (file '" <> Text.pack projectDhall <> "' not present)"
-            liftIO exitFailure
-
-          liftIO $ copyDirectoryRecursive dir path (const True)
-
-      project <- liftIO $ inputFile auto (path </> projectDhall)
-      configuration <- liftIO $ inputFile auto (path </> riftDhall)
-      pure (path, configuration, project)
-  where
-    unpackArchive url sha256 unpack = do
-      let path = riftCache env </> dir url sha256 False
-      unlessM (liftIO $ doesDirectoryExist path) do
-        Logger.info $ "Downloading file '" <> url <> "'..."
-
-        !(resp, _ :: Integer) <- do
-          uri <- URI.mkURI url
-          response <- case useURI uri of
-            Nothing -> do
-              Logger.error $ "URI '" <> url <> "' does not seem to be either HTTP or HTTPS"
-              liftIO exitFailure
-            Just (Left (url', options)) -> req GET url' NoReqBody lbsResponse options
-            Just (Right (url', options)) -> req GET url' NoReqBody lbsResponse options
-          pure (responseBody response, either (const 0) fst . decimal . decodeUtf8 . fromMaybe "0" $ responseHeader response "Content-Length")
-
-        let hashed = Text.pack $ show (hash (LBS.toStrict resp) :: Digest SHA256)
-
-        when (hashed /= sha256) do
-          Logger.error $ "Cannot validate extra dependency '" <> url <> "':\n* Expected SHA256: " <> sha256 <> "\n* Got SHA256: " <> hashed
+        unlessM (liftIO . doesFileExist $ dir </> projectDhall) do
+          Logger.error $ "Zipped file '" <> url <> "' does not contain a Rift project (file '" <> Text.pack projectDhall <> "' not present)"
           liftIO exitFailure
 
-        withSystemTempDirectory "rift" \dir -> unpack path dir resp
+        liftIO $ copyDirectoryRecursive dir path (const True)
+
+      project <- liftIO $ inputFile auto (path </> projectDhall)
+      configuration <- liftIO $ inputFile auto (path </> riftDhall)
+      pure (path, project, configuration)
+  where
+    unpackArchive url sha256 unpack = do
+      let path = dir
+      Logger.info $ "Downloading file '" <> url <> "'..."
+
+      !(resp, _ :: Integer) <- do
+        uri <- URI.mkURI url
+        response <- case useURI uri of
+          Nothing -> do
+            Logger.error $ "URI '" <> url <> "' does not seem to be either HTTP or HTTPS"
+            liftIO exitFailure
+          Just (Left (url', options)) -> req GET url' NoReqBody lbsResponse options
+          Just (Right (url', options)) -> req GET url' NoReqBody lbsResponse options
+        pure (responseBody response, either (const 0) fst . decimal . decodeUtf8 . fromMaybe "0" $ responseHeader response "Content-Length")
+
+      let hashed = Text.pack $ show (hash (LBS.toStrict resp) :: Digest SHA256)
+
+      when (hashed /= sha256) do
+        Logger.error $ "Cannot validate extra dependency '" <> url <> "':\n* Expected SHA256: " <> sha256 <> "\n* Got SHA256: " <> hashed
+        liftIO exitFailure
+
+      withSystemTempDirectory "rift" \dir -> unpack path dir resp
 
       project <- liftIO $ inputFile auto (path </> projectDhall)
       configuration <- liftIO $ inputFile auto (path </> riftDhall)
 
-      pure (path, configuration, project)
+      pure (path, project, configuration)
 
     copyArchive url _ _ kind [] = do
       Logger.error $ kind <> " file '" <> url <> "' is empty."

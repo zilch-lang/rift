@@ -117,14 +117,8 @@ fetchExtraDependencies :: (MonadIO m, MonadHttp m, MonadMask m) => Environment -
 fetchExtraDependencies _ [] = pure mempty
 fetchExtraDependencies env (dep : deps) = do
   done <- fetchExtraDependencies env deps
-  (path, project, _) <- downloadAndExtract mkPath dep env
+  (path, project, _) <- downloadAndExtract (riftCache env </> "extra-deps" </> error "TODO") dep env
   pure (Map.insert path project done)
-  where
-    mkPath url rev True =
-      let sha256 = show (hash $ encodeUtf8 (url <> "/" <> rev) :: Digest SHA256)
-       in "extra-deps" </> ("g-" <> sha256)
-    mkPath _ sha256 False =
-      "extra-deps" </> ("a-" <> Text.unpack sha256)
 
 checkUnresolvedDependencies :: (MonadIO m) => Map FilePath ProjectType -> [Text] -> [Text] -> m ([Text], [Text])
 checkUnresolvedDependencies _ _ [] = pure ([], [])

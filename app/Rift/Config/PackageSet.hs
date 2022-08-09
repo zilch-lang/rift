@@ -23,6 +23,7 @@ import Dhall.Src (Src)
 import Dhall.TypeCheck (TypeError)
 import GHC.Generics (Generic)
 import Rift.Config.Source (Source)
+import Rift.Config.Version (SemVer)
 import Rift.Environment (Environment (..))
 import qualified Rift.Logger as Logger
 import System.Exit (exitFailure)
@@ -41,6 +42,7 @@ ltsOf (Snapshot lts _ _) = lts
 
 data Package = Pkg
   { name :: Text,
+    version :: SemVer,
     src :: Source,
     component :: Maybe Text,
     maintainers :: [Text],
@@ -100,6 +102,7 @@ instance FromDhall Package where
     record $
       Pkg
         <$> field "name" auto
+        <*> field "version" auto
         <*> field "src" auto
         <*> field "component" auto
         <*> field "maintainers" auto

@@ -49,7 +49,7 @@ resolvePackage name lts versionConstraint force env = do
       liftIO exitFailure
     Just ltsDir -> do
       Snapshot _ _ packageSet <- liftIO (inputFile auto (ltsDir </> "lts" </> "packages" </> "set" <.> "dhall") :: IO Snapshot)
-      let packages = filter (\(Pkg n _ _ _ _ _) -> n == name) packageSet
+      let packages = filter (\(Pkg n _ _ _ _ _ _) -> n == name) packageSet
 
       case packages of
         [] -> do

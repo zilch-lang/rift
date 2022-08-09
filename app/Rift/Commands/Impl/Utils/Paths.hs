@@ -28,7 +28,11 @@ envDhall = "env" <.> "dhall"
 
 -- | Compute the effective path of a package.
 packagePath :: Package -> FilePath -> FilePath
-packagePath Pkg {..} relativeTo = relativeTo </> hash' src
+packagePath Pkg {..} relativeTo = sourcePath relativeTo src
+
+-- | Compute the effective path of a single source.
+sourcePath :: FilePath -> Source -> FilePath
+sourcePath relativeTo src = relativeTo </> hash' src
   where
     hash' (Git (Remote url) rev) = "git-" <> show (hash $ encodeUtf8 (url <> "/" <> rev) :: Digest SHA256)
     hash' (Git url _) = error $ "Unsupported location type " <> show url <> " for git source"

@@ -161,7 +161,9 @@ riftDhallTemplate lastLTS =
 
 projectDhallTemplate :: Text -> Template -> Text
 projectDhallTemplate projectName projectTemplate =
-  let componentTemplate = case projectTemplate of
+  let v100 = Dhall.App (Dhall.App (Dhall.App (Dhall.Field (Dhall.Var $ Dhall.V "Version" 0) (Dhall.FieldSelection Nothing "v" Nothing)) (Dhall.NaturalLit 1)) (Dhall.NaturalLit 0)) (Dhall.NaturalLit 0)
+
+      componentTemplate = case projectTemplate of
         Executable ->
           Dhall.ListLit
             Nothing
@@ -169,7 +171,7 @@ projectDhallTemplate projectName projectTemplate =
                 (Dhall.Var $ Dhall.V "Component" 0)
                 ( Dhall.RecordLit
                     [ ("name", Dhall.RecordField Nothing (Dhall.TextLit $ Dhall.Chunks [] projectName) Nothing Nothing),
-                      ("version", Dhall.RecordField Nothing (Dhall.TextLit $ Dhall.Chunks [] "1.0.0") Nothing Nothing),
+                      ("version", Dhall.RecordField Nothing v100 Nothing Nothing),
                       ("source-dirs", Dhall.RecordField Nothing (Dhall.ListLit Nothing [Dhall.TextLit $ Dhall.Chunks [] "src"]) Nothing Nothing),
                       ("kind", Dhall.RecordField Nothing (Dhall.Field (Dhall.Field (Dhall.Var $ Dhall.V "Component" 0) (Dhall.FieldSelection Nothing "Kind" Nothing)) (Dhall.FieldSelection Nothing "Executable" Nothing)) Nothing Nothing)
                     ]
@@ -182,7 +184,7 @@ projectDhallTemplate projectName projectTemplate =
                 (Dhall.Var $ Dhall.V "Component" 0)
                 ( Dhall.RecordLit
                     [ ("name", Dhall.RecordField Nothing (Dhall.TextLit $ Dhall.Chunks [] projectName) Nothing Nothing),
-                      ("version", Dhall.RecordField Nothing (Dhall.TextLit $ Dhall.Chunks [] "1.0.0") Nothing Nothing),
+                      ("version", Dhall.RecordField Nothing v100 Nothing Nothing),
                       ("source-dirs", Dhall.RecordField Nothing (Dhall.ListLit Nothing [Dhall.TextLit $ Dhall.Chunks [] "src"]) Nothing Nothing),
                       ("kind", Dhall.RecordField Nothing (Dhall.Field (Dhall.Field (Dhall.Var $ Dhall.V "Component" 0) (Dhall.FieldSelection Nothing "Kind" Nothing)) (Dhall.FieldSelection Nothing "Library" Nothing)) Nothing Nothing)
                     ]
@@ -199,7 +201,7 @@ projectDhallTemplate projectName projectTemplate =
           $ Dhall.Let
             (Dhall.Binding Nothing "Project" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "Project" Nothing))
             $ Dhall.Let
-              (Dhall.Binding Nothing "Version" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "VersionRange" Nothing))
+              (Dhall.Binding Nothing "Version" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "Version" Nothing))
               $ Dhall.Let
                 (Dhall.Binding Nothing "Component" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "Component" Nothing))
                 $ Dhall.Let

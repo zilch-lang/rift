@@ -8,7 +8,7 @@ let LTS =
 
 let Version =
       https://raw.githubusercontent.com/zilch-lang/rift/lib/version.dhall
-        sha256:b93b52f5c05c797b2431149bfc17f26f8d30c1cae9a0ba43edd94e593969d564
+        sha256:596564e58f0959e1cccfa1bb154948adb195d9220d381f0742f4058c9d083b58
 
 let PackageDependency = { package : Text, version : Version.Type → Bool }
 

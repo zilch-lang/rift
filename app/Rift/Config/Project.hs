@@ -6,14 +6,7 @@ module Rift.Config.Project where
 import Data.Foldable (fold)
 import Data.Text (Text)
 import Dhall.Marshal.Decode (FromDhall (..), auto, constructor, field, record, union, unit)
-
-data VersionRange
-  = Version
-      Text
-      -- ^ The name of the package.
-      Text
-      -- ^ The version range, in the form of, for example, @>= version@.
-  deriving (Show)
+import Rift.Config.Version (PackageDependency)
 
 data ComponentKind = Executable | Library
   deriving (Show)
@@ -24,7 +17,7 @@ data ComponentType
       -- ^ The name of the component.
       Text
       -- ^ The version of the component.
-      [VersionRange]
+      [PackageDependency]
       -- ^ The list of dependencies of the component.
       [Text]
       -- ^ A list of source directories containing the soure files.
@@ -32,20 +25,12 @@ data ComponentType
       -- ^ The kind of component to refer to.
       [Text]
       -- ^ Some additional flags to pass for all the modules inside this component.
-  deriving (Show)
 
 -- | Retrieves the name of the component.
 nameOf :: ComponentType -> Text
 nameOf (ComponentType name _ _ _ _ _) = name
 
 type ProjectType = [ComponentType]
-
-instance FromDhall VersionRange where
-  autoWith _ =
-    record $
-      Version
-        <$> field "package" auto
-        <*> field "range" auto
 
 instance FromDhall ComponentKind where
   autoWith _ =

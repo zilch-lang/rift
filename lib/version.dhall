@@ -57,7 +57,8 @@ let show =
       λ(v : Ty) →
         "${Natural/show v.major}.${Natural/show v.minor}.${Natural/show v.bug}"
 
-let version =
+let {- | A builder to create a version in a more readable way than writing a record. -}
+    v =
       λ(major : Natural) →
       λ(minor : Natural) →
       λ(bug : Natural) →
@@ -70,5 +71,5 @@ in  { Type = Ty
     , lessThanEqual
     , greaterThan
     , greaterThanEqual
-    , version
+    , v
     }

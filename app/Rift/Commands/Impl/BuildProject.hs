@@ -7,41 +7,26 @@
 
 module Rift.Commands.Impl.BuildProject where
 
-import qualified Codec.Archive.Tar as Tar
-import qualified Codec.Archive.Zip as Zip
-import qualified Codec.Compression.GZip as GZip
-import Control.Monad (unless, when)
 import Control.Monad.Catch (MonadMask)
-import Control.Monad.Extra (unlessM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Crypto.Hash (Digest, SHA256, hash)
-import qualified Data.ByteString.Lazy as LBS
 import Data.List (nub)
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import qualified Data.Text.IO as Text
-import Data.Text.Read (decimal)
 import Dhall (auto, inputFile)
-import Network.HTTP.Req (GET (..), MonadHttp, NoReqBody (..), lbsResponse, req, responseBody, responseHeader, useURI)
-import Rift.Commands.Impl.Utils.Directory (copyDirectoryRecursive)
+import Network.HTTP.Req (MonadHttp)
 import Rift.Commands.Impl.Utils.Download (downloadAndExtract)
 import Rift.Commands.Impl.Utils.Paths (projectDhall, riftDhall)
 import Rift.Config.Configuration (Configuration (..))
 import Rift.Config.PackageSet (Snapshot (..), snapshotFromDhallFile)
-import Rift.Config.Project (ComponentType (..), ProjectType (..), nameOf)
+import Rift.Config.Project (ComponentType (..), ProjectType, nameOf)
 import Rift.Config.Source (Source)
-import Rift.Environment (Environment, git, riftCache)
+import Rift.Environment (Environment, riftCache)
 import qualified Rift.Logger as Logger
-import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory, removeDirectoryRecursive)
-import System.Exit (ExitCode (..), exitFailure)
+import System.Exit (exitFailure)
 import System.FilePath ((<.>), (</>))
-import System.IO.Temp (withSystemTempDirectory)
-import qualified Text.URI as URI
-import Turtle (empty, procStrictWithErr)
 
 -- | Building the project happens in multiple steps:
 --

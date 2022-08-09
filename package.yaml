@@ -58,3 +58,5 @@ executables:
     - exceptions
     - modern-uri
     - zip-archive
+    - megaparsec
+    - parser-combinators

@@ -58,6 +58,7 @@ executable rift
       Rift.Config.Project
       Rift.Config.Source
       Rift.Config.Template
+      Rift.Config.Version
       Rift.Environment
       Rift.Environment.Def
       Rift.Environment.Setup
@@ -82,8 +83,10 @@ executable rift
     , filepath
     , fsnotify
     , hashable
+    , megaparsec
     , modern-uri
     , optparse-applicative
+    , parser-combinators
     , raw-strings-qq
     , req
     , tar

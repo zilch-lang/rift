@@ -1,13 +1,13 @@
 let Dependency =
-      https://raw.githubusercontent.com/zilch-lang/rift/lib/source.dhall
+      https://raw.githubusercontent.com/zilch-lang/rift/bbef5d86ff4d3a36e975407862e5568a77ca774f/lib/source.dhall
         sha256:ffaf30bb1622a6263e063a95de730c38d44c235ebe540052d7b30c750404e4b4
 
 let LTS =
-      https://raw.githubusercontent.com/zilch-lang/rift/lib/lts.dhall
+      https://raw.githubusercontent.com/zilch-lang/rift/bbef5d86ff4d3a36e975407862e5568a77ca774f/lib/lts.dhall
         sha256:11b148af43c98e53e30a373023774adaf4d292eec7933d9f214bf68714bcb141
 
 let Version =
-      https://raw.githubusercontent.com/zilch-lang/rift/lib/version.dhall
+      https://raw.githubusercontent.com/zilch-lang/rift/bbef5d86ff4d3a36e975407862e5568a77ca774f/lib/version.dhall
         sha256:596564e58f0959e1cccfa1bb154948adb195d9220d381f0742f4058c9d083b58
 
 let PackageDependency = { package : Text, version : Version.Type → Bool }
@@ -71,4 +71,11 @@ let {- |
       , default.extra-deps = [] : List Dependency
       }
 
-in  { Project, Configuration, VersionRange, Component, Dependency, LTS }
+in  { Project
+    , Configuration
+    , Version
+    , PackageDependency
+    , Component
+    , Dependency
+    , LTS
+    }

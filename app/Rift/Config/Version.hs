@@ -1,5 +1,6 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
@@ -12,11 +13,13 @@ import Control.Monad (void)
 import Control.Monad.Combinators.Expr (Operator (..), makeExprParser)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Functor (($>))
+import Data.Hashable (Hashable)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Void (Void)
 import Dhall.Marshal.Decode (FromDhall (..), Natural, auto, field, natural, record)
 import Dhall.Marshal.Encode (ToDhall (..), encodeField, recordEncoder, (>$<), (>*<))
+import GHC.Generics (Generic)
 import qualified Rift.Logger as Logger
 import System.Directory.Internal.Prelude (exitFailure)
 import Text.Megaparsec (MonadParsec)
@@ -46,7 +49,12 @@ data SemVer
       -- ^ minor
       Int
       -- ^ bug fix
-  deriving (Show, Eq)
+  deriving (Generic, Eq)
+
+instance Hashable SemVer
+
+instance Show SemVer where
+  show (SemVersion major minor bug) = show major <> "." <> show minor <> "." <> show bug
 
 instance Ord SemVer where
   SemVersion major1 minor1 bug1 < SemVersion major2 minor2 bug2 =

@@ -6,7 +6,7 @@ module Rift.Config.Project where
 import Data.Foldable (fold)
 import Data.Text (Text)
 import Dhall.Marshal.Decode (FromDhall (..), auto, constructor, field, record, union, unit)
-import Rift.Config.Version (PackageDependency)
+import Rift.Config.Version (PackageDependency, SemVer)
 
 data ComponentKind = Executable | Library
   deriving (Show)
@@ -15,7 +15,7 @@ data ComponentType
   = ComponentType
       Text
       -- ^ The name of the component.
-      Text
+      SemVer
       -- ^ The version of the component.
       [PackageDependency]
       -- ^ The list of dependencies of the component.

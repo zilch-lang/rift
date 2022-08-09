@@ -124,7 +124,7 @@ searchPackageCommand pkgName env@Env {..} = do
       Text.hPutStr handle "  - version "
       let version' = case version of
             Nothing -> "(not cached)"
-            Just v -> v
+            Just v -> Text.pack $ show v
       if
           | isBroken -> do
             ANSI.hSetSGR handle [ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.Red]

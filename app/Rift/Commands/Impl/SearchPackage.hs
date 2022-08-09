@@ -26,6 +26,7 @@ import qualified Data.Text.IO as Text
 import Dhall (auto, inputFile)
 import Rift.Commands.Impl.Utils.GitTags (fetchAllTags)
 import Rift.Commands.Impl.Utils.Paths (ltsPath, packagePath, projectDhall)
+import Rift.Config.Package (Package (..))
 import Rift.Config.PackageSet
 import Rift.Config.Project (ComponentType (..), ProjectType)
 import Rift.Environment (Environment (..))

@@ -9,7 +9,8 @@ import Crypto.Hash (Digest, SHA256, hash)
 import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Text.IO as Text
-import Rift.Config.PackageSet (LTSVersion, Package (..))
+import Rift.Config.Package (Package (..))
+import Rift.Config.PackageSet (LTSVersion)
 import Rift.Config.Source (Location (..), Source (..))
 import System.Directory (doesFileExist)
 import System.FilePath ((<.>), (</>))

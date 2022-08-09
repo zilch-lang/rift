@@ -16,6 +16,8 @@ import Control.Monad.Extra (unlessM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Crypto.Hash (Digest, SHA256, hash)
 import qualified Data.ByteString.Lazy as LBS
+import Data.Function (on)
+import Data.List (sortBy)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -24,12 +26,14 @@ import Data.Text.Read (decimal)
 import Dhall (auto, inputFile)
 import Network.HTTP.Req (GET (GET), MonadHttp, NoReqBody (..), lbsResponse, req, responseBody, responseHeader, useURI)
 import Rift.Commands.Impl.Utils.Directory (copyDirectoryRecursive)
+import Rift.Commands.Impl.Utils.ExtraDependencyCacheManager (insertExtraDependency)
 import Rift.Commands.Impl.Utils.Paths (ltsPath, packagePath, projectDhall, riftDhall, sourcePath)
 import Rift.Config.Configuration (Configuration (..))
-import Rift.Config.PackageSet (LTSVersion, Package (..), Snapshot (..))
+import Rift.Config.Package (ExtraPackage (..), Package (..))
+import Rift.Config.PackageSet (LTSVersion, Snapshot (..))
 import Rift.Config.Project (ComponentType (..), ProjectType)
 import Rift.Config.Source (Location (..), Source (..))
-import Rift.Config.Version (PackageDependency (..), VersionConstraint, trueConstraint)
+import Rift.Config.Version (ConstraintExpr, PackageDependency (..), VersionConstraint, trueConstraint, trueConstraintExpr)
 import Rift.Environment.Def (Environment (..))
 import qualified Rift.Logger as Logger
 import System.Directory (doesDirectoryExist, doesFileExist, listDirectory, removeDirectoryRecursive)
@@ -39,8 +43,8 @@ import System.IO.Temp (withSystemTempDirectory)
 import qualified Text.URI as URI
 import Turtle (empty, procStrictWithErr)
 
-resolvePackage :: (MonadIO m, MonadHttp m, MonadMask m) => Text -> LTSVersion -> VersionConstraint -> Bool -> Environment -> m Package
-resolvePackage name lts versionConstraint force env = do
+resolvePackage :: (MonadIO m, MonadHttp m, MonadMask m) => Text -> LTSVersion -> (ConstraintExpr, VersionConstraint) -> Bool -> Environment -> m Package
+resolvePackage name lts (constraintExpr, versionConstraint) force env = do
   ltsDir <- ltsPath (riftCache env) lts
 
   case ltsDir of
@@ -51,14 +55,28 @@ resolvePackage name lts versionConstraint force env = do
       Snapshot _ _ packageSet <- liftIO (inputFile auto (ltsDir </> "lts" </> "packages" </> "set" <.> "dhall") :: IO Snapshot)
       let packages = filter (\(Pkg n _ _ _ _ _ _) -> n == name) packageSet
 
-      case packages of
+      case sortBy (flip compare `on` version) packages of
         [] -> do
+          -- extraCache <- readExtraDepsCache (riftCache env </> "extra-deps")
+
           Logger.error $ "Package '" <> name <> "' not found in LTS '" <> Text.pack (show lts) <> "'"
           liftIO exitFailure
-        p : _ -> do
-          -- TODO: take @versionConstraint@ in account
-          fetchPackageTo lts (ltsDir </> "sources") (riftCache env </> "extra-deps") force env p
-          pure p
+        ps -> case filter (versionConstraint . version) ps of
+          [] -> do
+            let v1 = version $ head ps
+            Logger.error $
+              "Chosen LTS does not have a version of the package '"
+                <> name
+                <> "' satisfying the given constraint.\nLatest version found: "
+                <> Text.pack (show v1)
+                <> "\n\nWhile checking that the constraint '"
+                <> Text.pack (show constraintExpr)
+                <> "' holds."
+            liftIO exitFailure
+          p : _ -> do
+            -- TODO: take @versionConstraint@ in account
+            fetchPackageTo lts (ltsDir </> "sources") (riftCache env </> "extra-deps") force env p
+            pure p
 
 fetchPackageTo :: (MonadIO m, MonadHttp m, MonadMask m) => LTSVersion -> FilePath -> FilePath -> Bool -> Environment -> Package -> m ()
 fetchPackageTo lts ltsDir extraDepDir force env pkg@Pkg {..} = do
@@ -74,21 +92,22 @@ fetchPackageTo lts ltsDir extraDepDir force env pkg@Pkg {..} = do
         configuration <- liftIO $ inputFile auto (pkgDir </> riftDhall)
         pure (pkgDir, project, configuration)
       else do
-        (pkgDir, project, configuration@(Configuration _ extraDeps)) <- downloadAndExtract pkgDir src env
+        (pkgDir, project, configuration@(Configuration _ extraDeps)) <- downloadAndExtract pkgDir src False env
         let deps = project >>= \(ComponentType _ _ d _ _ _) -> d
 
-        -- - fetch dependencies
-        forM_ deps \(Version name range) -> do
-          pkg <- resolvePackage name lts trueConstraint force env
-          fetchPackageTo lts ltsDir extraDepDir force env pkg
-
         -- - fetch extra dependencies
-        forM_ extraDeps \source -> do
+        forM_ extraDeps \(ExtraPkg name version source _) -> do
           let srcPath = sourcePath extraDepDir source
           pathExists <- liftIO $ doesDirectoryExist srcPath
 
           when (force || not pathExists) do
-            void $ downloadAndExtract srcPath source env
+            void $ downloadAndExtract srcPath source True env
+            insertExtraDependency name version srcPath source env
+
+        -- - fetch dependencies
+        forM_ deps \(Version name constraint) -> do
+          pkg <- resolvePackage name lts (undefined, constraint) force env
+          fetchPackageTo lts ltsDir extraDepDir force env pkg
 
           pure ()
 
@@ -96,8 +115,8 @@ fetchPackageTo lts ltsDir extraDepDir force env pkg@Pkg {..} = do
 
   pure ()
 
-downloadAndExtract :: (MonadIO m, MonadHttp m, MonadMask m) => FilePath -> Source -> Environment -> m (FilePath, ProjectType, Configuration)
-downloadAndExtract dir dep env =
+downloadAndExtract :: (MonadIO m, MonadHttp m, MonadMask m) => FilePath -> Source -> Bool -> Environment -> m (FilePath, ProjectType, Configuration)
+downloadAndExtract dir dep isExtra env =
   case dep of
     Tar (Remote url) sha256 -> unpackArchive url sha256 \path dir tar -> do
       liftIO . Tar.unpack dir $ Tar.read tar

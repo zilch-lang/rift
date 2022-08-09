@@ -9,10 +9,8 @@
 
 module Rift.Config.Version where
 
-import Control.Monad (void)
 import Control.Monad.Combinators.Expr (Operator (..), makeExprParser)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Functor (($>))
 import Data.Hashable (Hashable)
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -89,6 +87,9 @@ type VersionConstraint = SemVer -> Bool
 trueConstraint :: VersionConstraint
 trueConstraint = const True
 
+trueConstraintExpr :: ConstraintExpr
+trueConstraintExpr = Ge (SemVersion 0 0 0)
+
 --------------------------------
 
 type Parser m = (MonadParsec Void Text m)
@@ -117,33 +118,39 @@ data ConstraintExpr
   | And ConstraintExpr ConstraintExpr
   | Or ConstraintExpr ConstraintExpr
 
-parseVersionConstraint :: (MonadIO m) => Text -> m VersionConstraint
+instance Show ConstraintExpr where
+  show (Eq ver) = "== " <> show ver
+  show (Neq ver) = "!= " <> show ver
+  show (Lt ver) = "< " <> show ver
+  show (Gt ver) = "> " <> show ver
+  show (Le ver) = "<= " <> show ver
+  show (Ge ver) = ">= " <> show ver
+  show (And c1 c2) = "(" <> show c1 <> " && " <> show c2 <> ")"
+  show (Or c1 c2) = "(" <> show c1 <> " || " <> show c2 <> ")"
+
+parseVersionConstraint :: (MonadIO m) => Text -> m (ConstraintExpr, VersionConstraint)
 parseVersionConstraint txt = case MP.parse pVersionConstraint "constraint" txt of
   Left err -> do
     Logger.error $ "Invalid version constraint:\n" <> Text.pack (MP.errorBundlePretty err)
     liftIO exitFailure
   Right pred -> pure pred
 
-pVersionConstraint :: forall m. (Parser m) => m VersionConstraint
-pVersionConstraint = interpret <$> makeExprParser (pUnary <* MP.many MPC.space) [[and, or]]
+pVersionConstraint :: forall m. (Parser m) => m (ConstraintExpr, VersionConstraint)
+pVersionConstraint = apRet interpret <$> makeExprParser (pUnary <* MPC.hspace) [[and, or]]
   where
-    pUnary = MP.choice [eq pSemVer, neq pSemVer, gt pSemVer, lt pSemVer, ge pSemVer, le pSemVer]
+    pUnary = MP.choice [eq pSemVer, neq pSemVer, ge pSemVer, le pSemVer, gt pSemVer, lt pSemVer]
 
     eq, neq, gt, lt, ge, le :: (Parser m) => m SemVer -> m ConstraintExpr
-    eq ver = Eq <$> (MPC.string "==" *> MP.many MPC.space *> ver)
-    neq ver = Neq <$> (MPC.string "!=" *> MP.many MPC.space *> ver)
-    gt ver = Gt <$> (MPC.string ">" *> MP.many MPC.space *> ver)
-    lt ver = Lt <$> (MPC.string "<" *> MP.many MPC.space *> ver)
-    ge ver = Ge <$> (MPC.string ">=" *> MP.many MPC.space *> ver)
-    le ver = Le <$> (MPC.string "<=" *> MP.many MPC.space *> ver)
+    eq ver = Eq <$> (MPC.string "==" *> MPC.hspace *> ver)
+    neq ver = Neq <$> (MPC.string "!=" *> MPC.hspace *> ver)
+    gt ver = Gt <$> (MPC.string ">" *> MPC.hspace *> ver)
+    lt ver = Lt <$> (MPC.string "<" *> MPC.hspace *> ver)
+    ge ver = Ge <$> (MPC.string ">=" *> MPC.hspace *> ver)
+    le ver = Le <$> (MPC.string "<=" *> MPC.hspace *> ver)
 
     and, or :: (Parser m) => Operator m ConstraintExpr
-    and = InfixN do
-      void $ MPC.string "&&" <* MP.many MPC.space
-      pure And
-    or = InfixN do
-      void $ MPC.string "||" <* MP.many MPC.space
-      pure Or
+    and = InfixN $ And <$ (MPC.hspace *> MPC.string "&&" <* MPC.hspace)
+    or = InfixN $ Or <$ (MPC.hspace *> MPC.string "||" <* MPC.hspace)
 
 -- | Transform a constraint expression into an actuall 'SemVer' unary predicate.
 interpret :: ConstraintExpr -> VersionConstraint
@@ -158,3 +165,6 @@ interpret (Or f g) = (||) `on2` (interpret f, interpret g)
 
 on2 :: (b -> c -> d) -> (a -> b, a -> c) -> a -> d
 on2 f (g, h) = \x -> f (g x) (h x)
+
+apRet :: (a -> b) -> a -> (a, b)
+apRet f x = (x, f x)

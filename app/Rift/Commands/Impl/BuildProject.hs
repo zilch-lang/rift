@@ -18,8 +18,10 @@ import qualified Data.Text.IO as Text
 import Dhall (auto, inputFile)
 import Network.HTTP.Req (MonadHttp)
 import Rift.Commands.Impl.Utils.Download (downloadAndExtract)
-import Rift.Commands.Impl.Utils.Paths (projectDhall, riftDhall)
+import Rift.Commands.Impl.Utils.ExtraDependencyCacheManager (insertExtraDependency)
+import Rift.Commands.Impl.Utils.Paths (projectDhall, riftDhall, sourcePath)
 import Rift.Config.Configuration (Configuration (..))
+import Rift.Config.Package (ExtraPackage (..))
 import Rift.Config.PackageSet (Snapshot (..), snapshotFromDhallFile)
 import Rift.Config.Project (ComponentType (..), ProjectType, nameOf)
 import Rift.Config.Source (Source)
@@ -80,7 +82,7 @@ buildProjectCommand dryRun nbCores dirtyFiles componentsToBuild env = do
     cs -> getComponentsByName components (nub cs)
 
   snapshot <- liftIO $ snapshotFromDhallFile (ltsDir </> "lts" </> "packages" </> "set.dhall") env
-  extraDeps' <- fetchExtraDependencies env (nub extraDeps)
+  extraDeps' <- fetchExtraDependencies env extraDeps
   (resolvedDeps1, unresolvedDeps) <- gatherDependencies snapshot componentsToBuild
   (resolvedDeps2, unresolvedDeps) <- checkUnresolvedDependencies extraDeps' (nameOf <$> components) unresolvedDeps
 
@@ -98,11 +100,16 @@ gatherDependencies :: (MonadIO m) => Snapshot -> [ComponentType] -> m ([Text], [
 gatherDependencies _ [] = pure ([], [])
 gatherDependencies snapshot (ComponentType _ _ deps _ _ _ : cs) = pure ([], [])
 
-fetchExtraDependencies :: (MonadIO m, MonadHttp m, MonadMask m) => Environment -> [Source] -> m (Map FilePath ProjectType)
+fetchExtraDependencies :: (MonadIO m, MonadHttp m, MonadMask m) => Environment -> [ExtraPackage] -> m (Map FilePath ProjectType)
 fetchExtraDependencies _ [] = pure mempty
-fetchExtraDependencies env (dep : deps) = do
+fetchExtraDependencies env (ExtraPkg name version dep _ : deps) = do
   done <- fetchExtraDependencies env deps
-  (path, project, _) <- downloadAndExtract (riftCache env </> "extra-deps" </> error "TODO") dep env
+
+  let srcPath = sourcePath (riftCache env </> "extra-deps") dep
+  (path, project, _) <- downloadAndExtract srcPath dep True env
+
+  insertExtraDependency name version path dep env
+
   pure (Map.insert path project done)
 
 checkUnresolvedDependencies :: (MonadIO m) => Map FilePath ProjectType -> [Text] -> [Text] -> m ([Text], [Text])

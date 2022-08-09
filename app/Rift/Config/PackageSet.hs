@@ -22,8 +22,7 @@ import Dhall.Marshal.Encode (ToDhall (..), encodeConstructor, encodeConstructorW
 import Dhall.Src (Src)
 import Dhall.TypeCheck (TypeError)
 import GHC.Generics (Generic)
-import Rift.Config.Source (Source)
-import Rift.Config.Version (SemVer)
+import Rift.Config.Package (Package)
 import Rift.Environment (Environment (..))
 import qualified Rift.Logger as Logger
 import System.Exit (exitFailure)
@@ -39,17 +38,6 @@ data Snapshot = Snapshot
 
 ltsOf :: Snapshot -> LTSVersion
 ltsOf (Snapshot lts _ _) = lts
-
-data Package = Pkg
-  { name :: Text,
-    version :: SemVer,
-    src :: Source,
-    component :: Maybe Text,
-    maintainers :: [Text],
-    broken :: Bool,
-    deprecated :: Bool
-  }
-  deriving (Generic, Show)
 
 data LTSVersion
   = LTS Int Int
@@ -96,18 +84,6 @@ instance FromDhall Snapshot where
         <$> field "name" auto
         <*> field "gzc-version" auto
         <*> field "package-set" auto
-
-instance FromDhall Package where
-  autoWith _ =
-    record $
-      Pkg
-        <$> field "name" auto
-        <*> field "version" auto
-        <*> field "src" auto
-        <*> field "component" auto
-        <*> field "maintainers" auto
-        <*> field "broken" auto
-        <*> field "deprecated" auto
 
 -- | Read an LTS version which is either @unstable@ or of the form @lts-<major>.<minor>@.
 readLTSVersion :: Text -> Maybe LTSVersion

@@ -51,9 +51,12 @@ executable rift
       Rift.Commands.Impl.Utils.DhallHash
       Rift.Commands.Impl.Utils.Directory
       Rift.Commands.Impl.Utils.Download
+      Rift.Commands.Impl.Utils.ExtraDependencyCacheManager
       Rift.Commands.Impl.Utils.GitTags
       Rift.Commands.Impl.Utils.Paths
       Rift.Config.Configuration
+      Rift.Config.ExtraDependencyCache
+      Rift.Config.Package
       Rift.Config.PackageSet
       Rift.Config.Project
       Rift.Config.Source

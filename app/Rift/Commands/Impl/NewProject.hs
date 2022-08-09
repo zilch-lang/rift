@@ -140,14 +140,18 @@ riftDhallTemplate lastLTS =
       $ Dhall.Let
         (Dhall.Binding Nothing "LTS" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "LTS" Nothing))
         $ Dhall.Let
-          (Dhall.Binding Nothing "Dependency" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "Dependency" Nothing))
+          (Dhall.Binding Nothing "ExtraDependency" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "ExtraDependency" Nothing))
           $ Dhall.Let
             (Dhall.Binding Nothing "Configuration" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "Configuration" Nothing))
-            $ Dhall.RecordCompletion
-              (Dhall.Var $ Dhall.V "Configuration" 0)
-              ( Dhall.RecordLit
-                  [("lts", Dhall.RecordField Nothing (toDhall lastLTS) Nothing Nothing)]
-              )
+            $ Dhall.Let
+              (Dhall.Binding Nothing "Version" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "Version" Nothing))
+              $ Dhall.Let
+                (Dhall.Binding Nothing "Source" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "Source" Nothing))
+                $ Dhall.RecordCompletion
+                  (Dhall.Var $ Dhall.V "Configuration" 0)
+                  ( Dhall.RecordLit
+                      [("lts", Dhall.RecordField Nothing (toDhall lastLTS) Nothing Nothing)]
+                  )
   where
     toDhall lts = case readLTSVersion lts of
       Just (LTS major minor) ->
@@ -204,6 +208,4 @@ projectDhallTemplate projectName projectTemplate =
               (Dhall.Binding Nothing "Version" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "Version" Nothing))
               $ Dhall.Let
                 (Dhall.Binding Nothing "Component" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "Component" Nothing))
-                $ Dhall.Let
-                  (Dhall.Binding Nothing "Dependency" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "Dependency" Nothing))
-                  $ componentTemplate
+                $ componentTemplate

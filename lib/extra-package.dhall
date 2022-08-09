@@ -16,4 +16,5 @@ in  { Type =
         , -- | If multiple components are declared in the source, specify one
           component : Optional Text
         }
+    , default = {=}
     }

@@ -1,6 +1,6 @@
 let ExtraPackage =
       ./extra-package.dhall
-        sha256:f28295368a791a3e59a71a6c6794205b764726a268499fc2eace1af9eb82d7c1
+        sha256:9cb1f6360b61c93ab2d6c680de9a447732e019f1531690b32008cadfe90cd781
 
 in  { Type =
           ExtraPackage.Type

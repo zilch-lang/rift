@@ -1,4 +1,16 @@
-let VersionRange = { package : Text, range : Text }
+let Dependency =
+      https://raw.githubusercontent.com/zilch-lang/rift/lib/source.dhall
+        sha256:ffaf30bb1622a6263e063a95de730c38d44c235ebe540052d7b30c750404e4b4
+
+let LTS =
+      https://raw.githubusercontent.com/zilch-lang/rift/lib/lts.dhall
+        sha256:11b148af43c98e53e30a373023774adaf4d292eec7933d9f214bf68714bcb141
+
+let Version =
+      https://raw.githubusercontent.com/zilch-lang/rift/lib/version.dhall
+        sha256:b93b52f5c05c797b2431149bfc17f26f8d30c1cae9a0ba43edd94e593969d564
+
+let PackageDependency = { package : Text, version : Version.Type → Bool }
 
 let Component =
       let K = < Executable | Library >
@@ -9,8 +21,8 @@ let Component =
                   The name of the component.
                 -}
                 name : Text
-              , version : Text
-              , dependencies : List VersionRange
+              , version : Version.Type
+              , dependencies : List PackageDependency
               , {- |
                   A list of directories containing Zilch source files.
 
@@ -25,18 +37,10 @@ let Component =
                 gzc-flags : List Text
               }
           , default =
-            { dependencies = [] : List VersionRange
+            { dependencies = [] : List PackageDependency
             , gzc-flags = [] : List Text
             }
           }
-
-let Dependency =
-      https://raw.githubusercontent.com/zilch-lang/rift/lib/source.dhall
-        sha256:ffaf30bb1622a6263e063a95de730c38d44c235ebe540052d7b30c750404e4b4
-
-let LTS =
-      https://raw.githubusercontent.com/zilch-lang/rift/lib/lts.dhall
-        sha256:11b148af43c98e53e30a373023774adaf4d292eec7933d9f214bf68714bcb141
 
 let
     {- |

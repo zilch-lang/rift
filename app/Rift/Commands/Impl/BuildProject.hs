@@ -17,7 +17,7 @@ import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import Dhall (auto, inputFile)
 import Network.HTTP.Req (MonadHttp)
-import Rift.Commands.Impl.Utils.Download (downloadAndExtract)
+import Rift.Commands.Impl.Utils.Download (checkVersionIsCoherent, downloadAndExtract)
 import Rift.Commands.Impl.Utils.ExtraDependencyCacheManager (insertExtraDependency)
 import Rift.Commands.Impl.Utils.Paths (projectDhall, riftDhall, sourcePath)
 import Rift.Config.Configuration (Configuration (..))
@@ -102,11 +102,12 @@ gatherDependencies snapshot (ComponentType _ _ deps _ _ _ : cs) = pure ([], [])
 
 fetchExtraDependencies :: (MonadIO m, MonadHttp m, MonadMask m) => Environment -> [ExtraPackage] -> m (Map FilePath ProjectType)
 fetchExtraDependencies _ [] = pure mempty
-fetchExtraDependencies env (ExtraPkg name version dep _ : deps) = do
+fetchExtraDependencies env (ExtraPkg name version dep comp : deps) = do
   done <- fetchExtraDependencies env deps
 
   let srcPath = sourcePath (riftCache env </> "extra-deps") dep
-  (path, project, _) <- downloadAndExtract srcPath dep True env
+  (path, project, _) <- downloadAndExtract srcPath dep env
+  checkVersionIsCoherent version comp project
 
   insertExtraDependency name version path dep env
 

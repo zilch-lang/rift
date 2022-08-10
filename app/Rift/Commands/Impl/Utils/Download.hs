@@ -33,7 +33,7 @@ import Rift.Config.Package (ExtraPackage (..), Package (..))
 import Rift.Config.PackageSet (LTSVersion, Snapshot (..))
 import Rift.Config.Project (ComponentType (..), ProjectType)
 import Rift.Config.Source (Location (..), Source (..))
-import Rift.Config.Version (ConstraintExpr, PackageDependency (..), VersionConstraint, trueConstraint, trueConstraintExpr)
+import Rift.Config.Version (ConstraintExpr, PackageDependency (..), SemVer, VersionConstraint, trueConstraint, trueConstraintExpr)
 import Rift.Environment.Def (Environment (..))
 import qualified Rift.Logger as Logger
 import System.Directory (doesDirectoryExist, doesFileExist, listDirectory, removeDirectoryRecursive)
@@ -92,16 +92,17 @@ fetchPackageTo lts ltsDir extraDepDir force env pkg@Pkg {..} = do
         configuration <- liftIO $ inputFile auto (pkgDir </> riftDhall)
         pure (pkgDir, project, configuration)
       else do
-        (pkgDir, project, configuration@(Configuration _ extraDeps)) <- downloadAndExtract pkgDir src False env
+        (pkgDir, project, configuration@(Configuration _ extraDeps)) <- downloadAndExtract pkgDir src env
         let deps = project >>= \(ComponentType _ _ d _ _ _) -> d
 
         -- - fetch extra dependencies
-        forM_ extraDeps \(ExtraPkg name version source _) -> do
+        forM_ extraDeps \(ExtraPkg name version source component) -> do
           let srcPath = sourcePath extraDepDir source
           pathExists <- liftIO $ doesDirectoryExist srcPath
 
           when (force || not pathExists) do
-            void $ downloadAndExtract srcPath source True env
+            (_, components, _) <- downloadAndExtract srcPath source env
+            checkVersionIsCoherent version component components
             insertExtraDependency name version srcPath source env
 
         -- - fetch dependencies
@@ -113,10 +114,30 @@ fetchPackageTo lts ltsDir extraDepDir force env pkg@Pkg {..} = do
 
         pure (pkgDir, project, configuration)
 
+  checkVersionIsCoherent version component components
+
   pure ()
 
-downloadAndExtract :: (MonadIO m, MonadHttp m, MonadMask m) => FilePath -> Source -> Bool -> Environment -> m (FilePath, ProjectType, Configuration)
-downloadAndExtract dir dep isExtra env =
+checkVersionIsCoherent :: (MonadIO m) => SemVer -> Maybe Text -> [ComponentType] -> m ()
+checkVersionIsCoherent _ (Just compName) [] = do
+  Logger.error $ "Component named '" <> compName <> "' not found in the fetched package."
+  liftIO exitFailure
+checkVersionIsCoherent _ Nothing [] = do
+  Logger.error "No component found in package."
+  liftIO exitFailure
+checkVersionIsCoherent ver Nothing [ComponentType _ ver2 _ _ _ _] = do
+  when (ver /= ver2) do
+    Logger.error $ "Inconsistency detected: component was expected to have version " <> Text.pack (show ver) <> " but the version " <> Text.pack (show ver2) <> " was found."
+    liftIO exitFailure
+checkVersionIsCoherent _ Nothing (_ : _) = do
+  Logger.error "Multiple components found but none have been specified"
+  liftIO exitFailure
+checkVersionIsCoherent ver (Just compName) (c@(ComponentType name _ _ _ _ _) : comps)
+  | compName /= name = checkVersionIsCoherent ver (Just compName) comps
+  | otherwise = checkVersionIsCoherent ver Nothing [c]
+
+downloadAndExtract :: (MonadIO m, MonadHttp m, MonadMask m) => FilePath -> Source -> Environment -> m (FilePath, ProjectType, Configuration)
+downloadAndExtract dir dep env =
   case dep of
     Tar (Remote url) sha256 -> unpackArchive url sha256 \path dir tar -> do
       liftIO . Tar.unpack dir $ Tar.read tar

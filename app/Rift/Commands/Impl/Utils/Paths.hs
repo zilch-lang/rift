@@ -33,6 +33,7 @@ packagePath Pkg {..} relativeTo = sourcePath relativeTo src
 
 -- | Compute the effective path of a single source.
 sourcePath :: FilePath -> Source -> FilePath
+sourcePath _ (Directory (Local dir)) = Text.unpack dir
 sourcePath relativeTo src = relativeTo </> hash' src
   where
     hash' (Git (Remote url) rev) = "git-" <> show (hash $ encodeUtf8 (url <> "/" <> rev) :: Digest SHA256)

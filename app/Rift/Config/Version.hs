@@ -2,20 +2,25 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 module Rift.Config.Version where
 
 import Control.Monad.Combinators.Expr (Operator (..), makeExprParser)
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Data.Bifunctor (first)
 import Data.Hashable (Hashable)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Void (Void)
-import Dhall.Marshal.Decode (FromDhall (..), Natural, auto, field, natural, record)
+import Dhall.Core (pretty)
+import Dhall.Marshal.Decode (Decoder (..), FromDhall (..), Natural, auto, field, natural, record)
 import Dhall.Marshal.Encode (ToDhall (..), encodeField, recordEncoder, (>$<), (>*<))
 import GHC.Generics (Generic)
 import qualified Rift.Logger as Logger
@@ -82,13 +87,18 @@ instance ToDhall SemVer where
       adjust :: SemVer -> (Natural, (Natural, Natural))
       adjust (SemVersion major minor bug) = (fromIntegral major, (fromIntegral minor, fromIntegral bug))
 
-type VersionConstraint = SemVer -> Bool
+type VersionConstraint = (Text, SemVer -> Bool)
+
+instance {-# OVERLAPPING #-} FromDhall VersionConstraint where
+  autoWith _ =
+    let decoder = auto :: Decoder (SemVer -> Bool)
+     in Decoder
+          { extract = \e -> (pretty e,) <$> extract decoder e,
+            expected = expected decoder
+          }
 
 trueConstraint :: VersionConstraint
-trueConstraint = const True
-
-trueConstraintExpr :: ConstraintExpr
-trueConstraintExpr = Ge (SemVersion 0 0 0)
+trueConstraint = ("λ(v : Version.Type) → True", const True)
 
 --------------------------------
 
@@ -119,24 +129,31 @@ data ConstraintExpr
   | Or ConstraintExpr ConstraintExpr
 
 instance Show ConstraintExpr where
-  show (Eq ver) = "== " <> show ver
-  show (Neq ver) = "!= " <> show ver
-  show (Lt ver) = "< " <> show ver
-  show (Gt ver) = "> " <> show ver
-  show (Le ver) = "<= " <> show ver
-  show (Ge ver) = ">= " <> show ver
-  show (And c1 c2) = "(" <> show c1 <> " && " <> show c2 <> ")"
-  show (Or c1 c2) = "(" <> show c1 <> " || " <> show c2 <> ")"
+  show expr = "λ(ver : Version.Type) → " <> show' expr
+    where
+      show' (Eq ver) = "ver == v " <> replace '.' ' ' (show ver)
+      show' (Neq ver) = "ver != v " <> replace '.' ' ' (show ver)
+      show' (Lt ver) = "ver < v " <> replace '.' ' ' (show ver)
+      show' (Gt ver) = "ver > v " <> replace '.' ' ' (show ver)
+      show' (Le ver) = "ver <= v " <> replace '.' ' ' (show ver)
+      show' (Ge ver) = "ver >= v " <> replace '.' ' ' (show ver)
+      show' (And c1 c2) = "(" <> show' c1 <> " && " <> show' c2 <> ")"
+      show' (Or c1 c2) = "(" <> show' c1 <> " || " <> show' c2 <> ")"
 
-parseVersionConstraint :: (MonadIO m) => Text -> m (ConstraintExpr, VersionConstraint)
+      replace _ _ [] = []
+      replace x y (z : zs)
+        | x == z = y : replace x y zs
+        | otherwise = z : replace x y zs
+
+parseVersionConstraint :: (MonadIO m) => Text -> m VersionConstraint
 parseVersionConstraint txt = case MP.parse pVersionConstraint "constraint" txt of
   Left err -> do
     Logger.error $ "Invalid version constraint:\n" <> Text.pack (MP.errorBundlePretty err)
     liftIO exitFailure
   Right pred -> pure pred
 
-pVersionConstraint :: forall m. (Parser m) => m (ConstraintExpr, VersionConstraint)
-pVersionConstraint = apRet interpret <$> makeExprParser (pUnary <* MPC.hspace) [[and, or]]
+pVersionConstraint :: forall m. (Parser m) => m VersionConstraint
+pVersionConstraint = first (Text.pack . show) . apRet interpret <$> makeExprParser (pUnary <* MPC.hspace) [[and, or]]
   where
     pUnary = MP.choice [eq pSemVer, neq pSemVer, ge pSemVer, le pSemVer, gt pSemVer, lt pSemVer]
 
@@ -153,7 +170,7 @@ pVersionConstraint = apRet interpret <$> makeExprParser (pUnary <* MPC.hspace) [
     or = InfixN $ Or <$ (MPC.hspace *> MPC.string "||" <* MPC.hspace)
 
 -- | Transform a constraint expression into an actuall 'SemVer' unary predicate.
-interpret :: ConstraintExpr -> VersionConstraint
+interpret :: ConstraintExpr -> SemVer -> Bool
 interpret (Eq v2) = (== v2)
 interpret (Neq v2) = (/= v2)
 interpret (Lt v2) = (< v2)

@@ -11,11 +11,11 @@ import Data.Text (Text)
 import Network.HTTP.Req (MonadHttp)
 import Rift.Commands.Impl.Utils.Download (resolvePackage)
 import Rift.Config.PackageSet (LTSVersion (..), readLTSVersion)
-import Rift.Config.Version (parseVersionConstraint, trueConstraint, trueConstraintExpr)
+import Rift.Config.Version (parseVersionConstraint, trueConstraint)
 import Rift.Environment (Environment (..))
 
 fetchPackageCommand :: (MonadIO m, MonadHttp m, MonadMask m) => Text -> Maybe Text -> Maybe Text -> Bool -> Environment -> m ()
 fetchPackageCommand name versionConstraint ltsName force env = do
   let lts = fromMaybe Unstable (ltsName >>= readLTSVersion)
-  constr <- fromMaybe (trueConstraintExpr, trueConstraint) <$> traverse parseVersionConstraint versionConstraint
+  constr <- fromMaybe trueConstraint <$> traverse parseVersionConstraint versionConstraint
   void $ resolvePackage name lts constr force env

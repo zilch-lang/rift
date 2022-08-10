@@ -48,6 +48,7 @@ executable rift
       Rift.Commands.Impl.QueryPaths
       Rift.Commands.Impl.SearchPackage
       Rift.Commands.Impl.UpdatePackageSet
+      Rift.Commands.Impl.Utils.Config
       Rift.Commands.Impl.Utils.DhallHash
       Rift.Commands.Impl.Utils.Directory
       Rift.Commands.Impl.Utils.Download

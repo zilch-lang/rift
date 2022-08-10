@@ -11,7 +11,6 @@ data Package = Pkg
   { name :: Text,
     version :: SemVer,
     src :: Source,
-    component :: Maybe Text,
     maintainers :: [Text],
     broken :: Bool,
     deprecated :: Bool
@@ -21,8 +20,7 @@ data Package = Pkg
 data ExtraPackage = ExtraPkg
   { extraName :: Text,
     extraVersion :: SemVer,
-    extraSrc :: Source,
-    extraComponent :: Maybe Text
+    extraSrc :: Source
   }
   deriving (Show)
 
@@ -33,7 +31,6 @@ instance FromDhall Package where
         <$> field "name" auto
         <*> field "version" auto
         <*> field "src" auto
-        <*> field "component" auto
         <*> field "maintainers" auto
         <*> field "broken" auto
         <*> field "deprecated" auto
@@ -45,4 +42,3 @@ instance FromDhall ExtraPackage where
         <$> field "name" auto
         <*> field "version" auto
         <*> field "src" auto
-        <*> field "component" auto

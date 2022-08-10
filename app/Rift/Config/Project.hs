@@ -4,6 +4,7 @@
 module Rift.Config.Project where
 
 import Data.Foldable (fold)
+import Data.Map (Map)
 import Data.Text (Text)
 import Dhall.Marshal.Decode (FromDhall (..), auto, constructor, field, record, union, unit)
 import Rift.Config.Version (PackageDependency, SemVer)
@@ -13,8 +14,6 @@ data ComponentKind = Executable | Library
 
 data ComponentType
   = ComponentType
-      Text
-      -- ^ The name of the component.
       SemVer
       -- ^ The version of the component.
       [PackageDependency]
@@ -26,11 +25,7 @@ data ComponentType
       [Text]
       -- ^ Some additional flags to pass for all the modules inside this component.
 
--- | Retrieves the name of the component.
-nameOf :: ComponentType -> Text
-nameOf (ComponentType name _ _ _ _ _) = name
-
-type ProjectType = [ComponentType]
+type ProjectType = Map Text ComponentType
 
 instance FromDhall ComponentKind where
   autoWith _ =
@@ -44,8 +39,7 @@ instance FromDhall ComponentType where
   autoWith _ =
     record $
       ComponentType
-        <$> field "name" auto
-        <*> field "version" auto
+        <$> field "version" auto
         <*> field "dependencies" auto
         <*> field "source-dirs" auto
         <*> field "kind" auto

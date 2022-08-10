@@ -34,9 +34,10 @@ insertExtraDependency name version path src env = do
 -- | Read the cache into a Haskell structure.
 readExtraCache :: (MonadIO m) => FilePath -> m ExtraCache
 readExtraCache path = do
-  unlessM (liftIO $ doesFileExist path) do
-    writeExtraCache path (ExtraCache MultiMap.empty mempty)
-  liftIO $ inputFile auto path
+  fileExists <- liftIO $ doesFileExist path
+  if fileExists
+    then liftIO $ inputFile auto path
+    else pure $ ExtraCache MultiMap.empty mempty
 
 -- | Write the cache back to a file.
 writeExtraCache :: (MonadIO m) => FilePath -> ExtraCache -> m ()

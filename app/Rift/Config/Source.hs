@@ -41,6 +41,8 @@ data Source
   | Zip
       Location
       Text
+  | Directory
+      Location
   deriving (Show, Eq)
 
 prettySource :: Source -> Text

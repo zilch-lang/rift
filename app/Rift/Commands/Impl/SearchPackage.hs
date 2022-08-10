@@ -78,9 +78,9 @@ searchPackageCommand pkgName env@Env {..} = do
         Text.hPutStrLn stdout " not found in the current package set."
         Text.hPutStrLn stdout "Maybe you want to update it with 'rift package update'?"
       _ -> do
-        let tmpPackages = HashMap.fromList $ sortedPackagesOnLTS >>= \(lts, vs) -> vs <&> \(version, broken, deprecated) -> (version, (lts, broken, deprecated))
+        let tmpPackages = HashMap.fromList $ sortedPackagesOnLTS >>= \(lts, vs) -> vs <&> \(version, cached, broken, deprecated) -> (version, (lts, cached, broken, deprecated))
             keysInOrder = reverse $ fst <$> sortedPackagesOnLTS
-            packages = HashMap.foldlWithKey' (\m version (lts, broken, deprecated) -> HashMap.insertWith (<>) lts [(version, broken, deprecated)] m) mempty tmpPackages
+            packages = HashMap.foldlWithKey' (\m version (lts, cached, broken, deprecated) -> HashMap.insertWith (<>) lts [(version, cached, broken, deprecated)] m) mempty tmpPackages
 
         Text.hPutStr stdout "Found package "
         ANSI.hSetSGR stdout [ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.Magenta, ANSI.SetConsoleIntensity ANSI.BoldIntensity]
@@ -108,7 +108,7 @@ searchPackageCommand pkgName env@Env {..} = do
             Text.hPutStrLn stdout ":"
 
             forM_ versionsAndSources \(ver, (_, src)) -> do
-              outputVersions stdout [(Just ver, False, False)]
+              outputVersions stdout [(ver, True, False, False)]
               Text.hPutStr stdout "    (source is "
               ANSI.hSetSGR stdout [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.Black, ANSI.SetItalicized True]
               Text.hPutStr stdout $ Text.replace "\n" " " (prettySource src)
@@ -132,41 +132,44 @@ searchPackageCommand pkgName env@Env {..} = do
               versions <- forM versionsOfPackageInLTS \pkg@Pkg {..} -> do
                 let pkgPath = packagePath pkg (ltsDir </> "sources")
                 pathExists <- liftIO $ doesDirectoryExist pkgPath
-                if not pathExists
-                  then pure (t, [(Nothing, broken, deprecated)])
-                  else do
-                    cs <- liftIO (inputFile auto (pkgPath </> projectDhall) :: IO ProjectType)
-                    let retained = filter (\(ComponentType name _ _ _ _ _) -> isNothing component || Just name == component) cs
-                    case retained of
-                      [] -> pure (t, [])
-                      _ : _ : _ -> pure (t, [])
-                      [ComponentType _ version _ _ _ _] -> pure (t, [(Just version, broken, deprecated)])
+
+                pure (t, [(version, pathExists, broken, deprecated)])
               pure ([], HashMap.fromListWith (<>) versions)
 
       when (not $ null uncached) do
         Logger.warn "Some LTSes were not present in the global cache.\nYou may want to run 'rift package update' to fix this."
-      when (any (any (\(v, _, _) -> isNothing v)) $ HashMap.elems versionsFound) do
+      when (any (any (\(_, cached, _, _) -> not cached)) $ HashMap.elems versionsFound) do
         Logger.warn $ "Some versions were not cached. Run 'rift package fetch " <> pkgName <> "' to cache them."
 
       pure versionsFound
 
-    outputVersion handle version isBroken isDeprecated = do
+    outputVersion handle version cached isBroken isDeprecated = do
       Text.hPutStr handle "  - version "
-      let version' = case version of
-            Nothing -> "(not cached)"
-            Just v -> Text.pack $ show v
+      let version' = Text.pack (show version)
       if
           | isBroken -> do
             ANSI.hSetSGR handle [ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.Red]
             Text.hPutStr handle version'
+            unless cached do
+              ANSI.hSetSGR stdout [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.Black, ANSI.SetItalicized True]
+              Text.hPutStr handle " (not cached)"
+              ANSI.hSetSGR handle [ANSI.Reset, ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.Red]
             Text.hPutStr handle " (broken)"
           | isDeprecated -> do
             ANSI.hSetSGR handle [ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.Yellow]
             Text.hPutStr handle version'
+            unless cached do
+              ANSI.hSetSGR stdout [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.Black, ANSI.SetItalicized True]
+              Text.hPutStr handle " (not cached)"
+              ANSI.hSetSGR handle [ANSI.Reset, ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.Yellow]
             Text.hPutStr handle " (deprecated)"
           | otherwise -> do
             ANSI.hSetSGR handle [ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.Green]
             Text.hPutStr handle version'
+            unless cached do
+              ANSI.hSetSGR stdout [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.Black, ANSI.SetItalicized True]
+              Text.hPutStr handle " (not cached)"
+              ANSI.hSetSGR handle [ANSI.Reset, ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.Green]
       ANSI.hSetSGR handle [ANSI.Reset]
 
     outputLTS handle name = do
@@ -177,7 +180,7 @@ searchPackageCommand pkgName env@Env {..} = do
       Text.hPutStrLn handle ":"
 
     outputVersions _ [] = pure ()
-    outputVersions handle ((version, isBroken, isDeprecated) : vs) = do
-      outputVersion handle version isBroken isDeprecated
+    outputVersions handle ((version, cached, isBroken, isDeprecated) : vs) = do
+      outputVersion handle version cached isBroken isDeprecated
       Text.hPutStrLn handle ""
       outputVersions handle vs

@@ -7,24 +7,28 @@
 
 module Rift.Commands.Impl.BuildProject where
 
+import Control.Monad (forM_)
 import Control.Monad.Catch (MonadMask)
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Data.Functor ((<&>))
 import Data.List (nub)
 import Data.Map (Map)
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import Dhall (auto, inputFile)
 import Network.HTTP.Req (MonadHttp)
-import Rift.Commands.Impl.Utils.Download (checkVersionIsCoherent, downloadAndExtract)
+import Rift.Commands.Impl.Utils.Config (readPackageDhall)
+import Rift.Commands.Impl.Utils.Download (downloadAndExtract, fetchPackageTo)
 import Rift.Commands.Impl.Utils.ExtraDependencyCacheManager (insertExtraDependency)
 import Rift.Commands.Impl.Utils.Paths (projectDhall, riftDhall, sourcePath)
 import Rift.Config.Configuration (Configuration (..))
-import Rift.Config.Package (ExtraPackage (..))
+import Rift.Config.Package (ExtraPackage (..), Package (..))
 import Rift.Config.PackageSet (Snapshot (..), snapshotFromDhallFile)
-import Rift.Config.Project (ComponentType (..), ProjectType, nameOf)
-import Rift.Config.Source (Source)
+import Rift.Config.Project (ComponentType (..), ProjectType)
+import Rift.Config.Source (Location (Local), Source (Directory))
 import Rift.Environment (Environment, riftCache)
 import qualified Rift.Logger as Logger
 import System.Exit (exitFailure)
@@ -67,7 +71,7 @@ import System.FilePath ((<.>), (</>))
 --   6. I don't know
 buildProjectCommand :: (MonadIO m, MonadHttp m, MonadMask m) => Bool -> Integer -> Bool -> [Text] -> Environment -> m ()
 buildProjectCommand dryRun nbCores dirtyFiles componentsToBuild env = do
-  !components <- liftIO $ inputFile auto projectDhall
+  !components <- readPackageDhall "."
   Configuration lts extraDeps <- liftIO $ inputFile auto riftDhall
 
   let ltsTag = show lts
@@ -78,36 +82,38 @@ buildProjectCommand dryRun nbCores dirtyFiles componentsToBuild env = do
   componentsToBuild <- case componentsToBuild of
     [] -> do
       Logger.debug "No component specified. Building all local components."
-      pure components
-    cs -> getComponentsByName components (nub cs)
+      pure $ Map.elems components
+    cs -> getComponentsByName (Map.elems $ Map.restrictKeys components (Set.fromList cs)) (nub cs)
 
   snapshot <- liftIO $ snapshotFromDhallFile (ltsDir </> "lts" </> "packages" </> "set.dhall") env
-  extraDeps' <- fetchExtraDependencies env extraDeps
-  (resolvedDeps1, unresolvedDeps) <- gatherDependencies snapshot componentsToBuild
-  (resolvedDeps2, unresolvedDeps) <- checkUnresolvedDependencies extraDeps' (nameOf <$> components) unresolvedDeps
+
+  let pkgs = componentsToBuild <&> \(ComponentType ver _ _ _ _) -> Pkg "?" ver (Directory $ Local ".") [] False False
+  --                                                                        ^^^ what to put here?
+  -- forM_ pkgs \thisPkg -> do
+  --   fetchPackageTo [thisPkg] lts ltsDir (riftCache env </> "extra-deps") False env thisPkg
 
   pure ()
 
 getComponentsByName :: (MonadIO m) => [ComponentType] -> [Text] -> m [ComponentType]
 getComponentsByName _ [] = pure []
-getComponentsByName components (c : cs) = case findElem (\(ComponentType name _ _ _ _ _) -> name == c) components of
-  Nothing -> do
-    Logger.error $ "Component named '" <> c <> "' not found in local project."
-    liftIO exitFailure
-  Just (c1, others) -> (c1 :) <$> getComponentsByName others cs
+
+-- getComponentsByName components (c : cs) = case findElem (\(ComponentType name _ _ _ _ _) -> name == c) components of
+--   Nothing -> do
+--     Logger.error $ "Component named '" <> c <> "' not found in local project."
+--     liftIO exitFailure
+--   Just (c1, others) -> (c1 :) <$> getComponentsByName others cs
 
 gatherDependencies :: (MonadIO m) => Snapshot -> [ComponentType] -> m ([Text], [Text])
 gatherDependencies _ [] = pure ([], [])
-gatherDependencies snapshot (ComponentType _ _ deps _ _ _ : cs) = pure ([], [])
+gatherDependencies snapshot (ComponentType _ deps _ _ _ : cs) = pure ([], [])
 
 fetchExtraDependencies :: (MonadIO m, MonadHttp m, MonadMask m) => Environment -> [ExtraPackage] -> m (Map FilePath ProjectType)
 fetchExtraDependencies _ [] = pure mempty
-fetchExtraDependencies env (ExtraPkg name version dep comp : deps) = do
+fetchExtraDependencies env (ExtraPkg name version dep : deps) = do
   done <- fetchExtraDependencies env deps
 
   let srcPath = sourcePath (riftCache env </> "extra-deps") dep
   (path, project, _) <- downloadAndExtract srcPath dep env
-  checkVersionIsCoherent version comp project
 
   insertExtraDependency name version path dep env
 

@@ -17,7 +17,8 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 import Crypto.Hash (Digest, SHA256, hash)
 import qualified Data.ByteString.Lazy as LBS
 import Data.Function (on)
-import Data.List (sortBy)
+import Data.List (find, sortBy)
+import qualified Data.Map as Map
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -25,6 +26,7 @@ import Data.Text.Encoding (decodeUtf8)
 import Data.Text.Read (decimal)
 import Dhall (auto, inputFile)
 import Network.HTTP.Req (GET (GET), MonadHttp, NoReqBody (..), lbsResponse, req, responseBody, responseHeader, useURI)
+import Rift.Commands.Impl.Utils.Config (readPackageDhall)
 import Rift.Commands.Impl.Utils.Directory (copyDirectoryRecursive)
 import Rift.Commands.Impl.Utils.ExtraDependencyCacheManager (insertExtraDependency)
 import Rift.Commands.Impl.Utils.Paths (ltsPath, packagePath, projectDhall, riftDhall, sourcePath)
@@ -33,7 +35,7 @@ import Rift.Config.Package (ExtraPackage (..), Package (..))
 import Rift.Config.PackageSet (LTSVersion, Snapshot (..))
 import Rift.Config.Project (ComponentType (..), ProjectType)
 import Rift.Config.Source (Location (..), Source (..))
-import Rift.Config.Version (ConstraintExpr, PackageDependency (..), SemVer, VersionConstraint, trueConstraint, trueConstraintExpr)
+import Rift.Config.Version (ConstraintExpr, PackageDependency (..), SemVer, VersionConstraint, trueConstraint)
 import Rift.Environment.Def (Environment (..))
 import qualified Rift.Logger as Logger
 import System.Directory (doesDirectoryExist, doesFileExist, listDirectory, removeDirectoryRecursive)
@@ -43,7 +45,7 @@ import System.IO.Temp (withSystemTempDirectory)
 import qualified Text.URI as URI
 import Turtle (empty, procStrictWithErr)
 
-resolvePackage :: (MonadIO m, MonadHttp m, MonadMask m) => Text -> LTSVersion -> (ConstraintExpr, VersionConstraint) -> Bool -> Environment -> m Package
+resolvePackage :: (MonadIO m, MonadHttp m, MonadMask m) => Text -> LTSVersion -> VersionConstraint -> Bool -> Environment -> m Package
 resolvePackage name lts (constraintExpr, versionConstraint) force env = do
   ltsDir <- ltsPath (riftCache env) lts
 
@@ -53,7 +55,7 @@ resolvePackage name lts (constraintExpr, versionConstraint) force env = do
       liftIO exitFailure
     Just ltsDir -> do
       Snapshot _ _ packageSet <- liftIO (inputFile auto (ltsDir </> "lts" </> "packages" </> "set" <.> "dhall") :: IO Snapshot)
-      let packages = filter (\(Pkg n _ _ _ _ _ _) -> n == name) packageSet
+      let packages = filter (\(Pkg n _ _ _ _ _) -> n == name) packageSet
 
       case sortBy (flip compare `on` version) packages of
         [] -> do
@@ -70,16 +72,28 @@ resolvePackage name lts (constraintExpr, versionConstraint) force env = do
                 <> "' satisfying the given constraint.\nLatest version found: "
                 <> Text.pack (show v1)
                 <> "\n\nWhile checking that the constraint '"
-                <> Text.pack (show constraintExpr)
+                <> constraintExpr
                 <> "' holds."
             liftIO exitFailure
           p : _ -> do
-            -- TODO: take @versionConstraint@ in account
-            fetchPackageTo lts (ltsDir </> "sources") (riftCache env </> "extra-deps") force env p
+            fetchPackageTo' lts (ltsDir </> "sources") (riftCache env </> "extra-deps") force env p
             pure p
 
-fetchPackageTo :: (MonadIO m, MonadHttp m, MonadMask m) => LTSVersion -> FilePath -> FilePath -> Bool -> Environment -> Package -> m ()
-fetchPackageTo lts ltsDir extraDepDir force env pkg@Pkg {..} = do
+fetchPackageTo' :: (MonadIO m, MonadHttp m, MonadMask m) => LTSVersion -> FilePath -> FilePath -> Bool -> Environment -> Package -> m ()
+fetchPackageTo' = fetchPackageTo []
+
+fetchPackageTo :: (MonadIO m, MonadHttp m, MonadMask m) => [Package] -> LTSVersion -> FilePath -> FilePath -> Bool -> Environment -> Package -> m ()
+fetchPackageTo stack lts ltsDir extraDepDir force env pkg@Pkg {..} = do
+  let name' = name
+  case stack of
+    [] -> pure ()
+    [_] -> pure ()
+    stack -> case find (\Pkg {..} -> name' == name) stack of
+      Just _ -> do
+        Logger.error $ "Cyclic dependency encountered:\n" <> showCycle stack
+        liftIO exitFailure
+      Nothing -> pure ()
+
   let pkgDir = packagePath pkg ltsDir
   (_, components, configuration) <- do
     pathExists <- liftIO $ doesDirectoryExist pkgDir
@@ -93,48 +107,55 @@ fetchPackageTo lts ltsDir extraDepDir force env pkg@Pkg {..} = do
         pure (pkgDir, project, configuration)
       else do
         (pkgDir, project, configuration@(Configuration _ extraDeps)) <- downloadAndExtract pkgDir src env
-        let deps = project >>= \(ComponentType _ _ d _ _ _) -> d
+        let deps = Map.elems project >>= \(ComponentType _ d _ _ _) -> d
 
         -- - fetch extra dependencies
-        forM_ extraDeps \(ExtraPkg name version source component) -> do
+        forM_ extraDeps \(ExtraPkg name version source) -> do
           let srcPath = sourcePath extraDepDir source
           pathExists <- liftIO $ doesDirectoryExist srcPath
 
           when (force || not pathExists) do
             (_, components, _) <- downloadAndExtract srcPath source env
-            checkVersionIsCoherent version component components
+            -- checkVersionIsCoherent version component components
             insertExtraDependency name version srcPath source env
 
         -- - fetch dependencies
         forM_ deps \(Version name constraint) -> do
-          pkg <- resolvePackage name lts (undefined, constraint) force env
-          fetchPackageTo lts ltsDir extraDepDir force env pkg
+          let stack' = pkg : stack
+          pkg <- resolvePackage name lts constraint force env
+          fetchPackageTo stack' lts ltsDir extraDepDir force env pkg
 
           pure ()
 
         pure (pkgDir, project, configuration)
 
-  checkVersionIsCoherent version component components
+  -- checkVersionIsCoherent version component components
 
   pure ()
+  where
+    showCycle = mappend "↳ " . showCycle' 0
 
-checkVersionIsCoherent :: (MonadIO m) => SemVer -> Maybe Text -> [ComponentType] -> m ()
-checkVersionIsCoherent _ (Just compName) [] = do
-  Logger.error $ "Component named '" <> compName <> "' not found in the fetched package."
-  liftIO exitFailure
-checkVersionIsCoherent _ Nothing [] = do
-  Logger.error "No component found in package."
-  liftIO exitFailure
-checkVersionIsCoherent ver Nothing [ComponentType _ ver2 _ _ _ _] = do
-  when (ver /= ver2) do
-    Logger.error $ "Inconsistency detected: component was expected to have version " <> Text.pack (show ver) <> " but the version " <> Text.pack (show ver2) <> " was found."
-    liftIO exitFailure
-checkVersionIsCoherent _ Nothing (_ : _) = do
-  Logger.error "Multiple components found but none have been specified"
-  liftIO exitFailure
-checkVersionIsCoherent ver (Just compName) (c@(ComponentType name _ _ _ _ _) : comps)
-  | compName /= name = checkVersionIsCoherent ver (Just compName) comps
-  | otherwise = checkVersionIsCoherent ver Nothing [c]
+    showCycle' _ [] = ""
+    showCycle' _ [Pkg name _ _ _ _ _] = name
+    showCycle' n (Pkg name _ _ _ _ _ : ps) = name <> "\n" <> Text.replicate n " " <> "↳ depends on " <> showCycle' (n + 2) ps
+
+-- checkVersionIsCoherent :: (MonadIO m) => SemVer -> Maybe Text -> [ComponentType] -> m ()
+-- checkVersionIsCoherent _ (Just compName) [] = do
+--   Logger.error $ "Component named '" <> compName <> "' not found in the fetched package."
+--   liftIO exitFailure
+-- checkVersionIsCoherent _ Nothing [] = do
+--   Logger.error "No component found in package."
+--   liftIO exitFailure
+-- checkVersionIsCoherent ver Nothing [ComponentType ver2 _ _ _ _] = do
+--   when (ver /= ver2) do
+--     Logger.error $ "Inconsistency detected: component was expected to have version " <> Text.pack (show ver) <> " but the version " <> Text.pack (show ver2) <> " was found."
+--     liftIO exitFailure
+-- checkVersionIsCoherent _ Nothing (_ : _) = do
+--   Logger.error "Multiple components found but none have been specified"
+--   liftIO exitFailure
+-- checkVersionIsCoherent ver (Just compName) (c@(ComponentType name _ _ _ _ _) : comps)
+--   | compName /= name = checkVersionIsCoherent ver (Just compName) comps
+--   | otherwise = checkVersionIsCoherent ver Nothing [c]
 
 downloadAndExtract :: (MonadIO m, MonadHttp m, MonadMask m) => FilePath -> Source -> Environment -> m (FilePath, ProjectType, Configuration)
 downloadAndExtract dir dep env =
@@ -208,7 +229,7 @@ downloadAndExtract dir dep env =
 
         liftIO $ copyDirectoryRecursive dir path (const True)
 
-      project <- liftIO $ inputFile auto (path </> projectDhall)
+      project <- readPackageDhall path
       configuration <- liftIO $ inputFile auto (path </> riftDhall)
       pure (path, project, configuration)
     Git _ _ -> do
@@ -237,7 +258,7 @@ downloadAndExtract dir dep env =
 
       withSystemTempDirectory "rift" \dir -> unpack path dir resp
 
-      project <- liftIO $ inputFile auto (path </> projectDhall)
+      project <- readPackageDhall path
       configuration <- liftIO $ inputFile auto (path </> riftDhall)
 
       pure (path, project, configuration)

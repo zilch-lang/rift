@@ -18,15 +18,19 @@ let Ty =
 
 let Natural/equal =
       https://raw.githubusercontent.com/dhall-lang/dhall-lang/v21.1.0/Prelude/Natural/equal.dhall
+        sha256:7f108edfa35ddc7cebafb24dc073478e93a802e13b5bc3fd22f4768c9b066e60
 
 let Natural/lessThan =
       https://raw.githubusercontent.com/dhall-lang/dhall-lang/v21.1.0/Prelude/Natural/lessThan.dhall
+        sha256:3381b66749290769badf8855d8a3f4af62e8de52d1364d838a9d1e20c94fa70c
 
 let Bool/or =
       https://raw.githubusercontent.com/dhall-lang/dhall-lang/v21.1.0/Prelude/Bool/or.dhall
+        sha256:5c50738e84e1c4fed8343ebd57608500e1b61ac1f502aa52d6d6edb5c20b99e4
 
 let Bool/not =
       https://raw.githubusercontent.com/dhall-lang/dhall-lang/v21.1.0/Prelude/Bool/not.dhall
+        sha256:723df402df24377d8a853afed08d9d69a0a6d86e2e5b2bac8960b0d4756c7dc4
 
 let equal =
       λ(v1 : Ty) →

@@ -13,8 +13,6 @@ in  { Type =
           version : Version.Type
         , -- | Where to fetch the source of the package from
           src : Source
-        , -- | If multiple components are declared in the source, specify one
-          component : Optional Text
         }
     , default = {=}
     }

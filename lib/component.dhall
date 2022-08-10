@@ -13,11 +13,7 @@ let K = < Executable | Library >
 
 in  { Kind = K
     , Type =
-        { {- |
-            The name of the component.
-          -}
-          name : Text
-        , version : Version.Type
+        { version : Version.Type
         , dependencies : List PackageDependency
         , {- |
             A list of directories containing Zilch source files.

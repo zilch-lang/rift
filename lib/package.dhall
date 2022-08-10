@@ -1,6 +1,6 @@
 let ExtraPackage =
       ./extra-package.dhall
-        sha256:9cb1f6360b61c93ab2d6c680de9a447732e019f1531690b32008cadfe90cd781
+        sha256:0cee6fd112dd9b821b12b7110f311d9b22d1a3bf74d324e883f39629ea252a4e
 
 in  { Type =
           ExtraPackage.Type
@@ -12,9 +12,5 @@ in  { Type =
             deprecated : Bool
           }
     , default =
-      { component = None Text
-      , maintainers = [] : List Text
-      , broken = False
-      , deprecated = False
-      }
+      { maintainers = [] : List Text, broken = False, deprecated = False }
     }

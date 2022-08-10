@@ -44,10 +44,10 @@ data Source
   deriving (Show, Eq)
 
 prettySource :: Source -> Text
-prettySource (Git loc rev) = "Git { url = " <> prettyLocation loc <> " as Location, rev = \"" <> rev <> "\""
-prettySource (Tar loc sha256) = "Tar { url = " <> prettyLocation loc <> " as Location, sha256 = \"" <> sha256 <> "\""
-prettySource (TarGz loc sha256) = "TarGz { url = " <> prettyLocation loc <> " as Location, sha256 = \"" <> sha256 <> "\""
-prettySource (Zip loc sha256) = "Zip { url = " <> prettyLocation loc <> " as Location, sha256 = \"" <> sha256 <> "\""
+prettySource (Git loc rev) = "Git { url = " <> prettyLocation loc <> " as Location, rev = \"" <> rev <> "\" }"
+prettySource (Tar loc sha256) = "Tar { url = " <> prettyLocation loc <> " as Location, sha256 = \"" <> sha256 <> "\" }"
+prettySource (TarGz loc sha256) = "TarGz { url = " <> prettyLocation loc <> " as Location, sha256 = \"" <> sha256 <> "\" }"
+prettySource (Zip loc sha256) = "Zip { url = " <> prettyLocation loc <> " as Location, sha256 = \"" <> sha256 <> "\" }"
 
 instance FromDhall Source where
   autoWith _ =

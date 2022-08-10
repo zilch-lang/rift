@@ -1,55 +1,22 @@
 let LTS =
-      https://raw.githubusercontent.com/zilch-lang/rift/f1155219b65393dcfec37cf57fa1b905d031c567/lib/lts.dhall
+      https://raw.githubusercontent.com/zilch-lang/rift/7d05a7e8413ef8c19695152ad749f435b6ce09e5/lib/lts.dhall
         sha256:11b148af43c98e53e30a373023774adaf4d292eec7933d9f214bf68714bcb141
 
 let Version =
-      https://raw.githubusercontent.com/zilch-lang/rift/f1155219b65393dcfec37cf57fa1b905d031c567/lib/version.dhall
+      https://raw.githubusercontent.com/zilch-lang/rift/7d05a7e8413ef8c19695152ad749f435b6ce09e5/lib/version.dhall
         sha256:596564e58f0959e1cccfa1bb154948adb195d9220d381f0742f4058c9d083b58
 
 let ExtraDependency =
-      https://raw.githubusercontent.com/zilch-lang/rift/f1155219b65393dcfec37cf57fa1b905d031c567/lib/extra-package.dhall
-        sha256:9cb1f6360b61c93ab2d6c680de9a447732e019f1531690b32008cadfe90cd781
+      https://raw.githubusercontent.com/zilch-lang/rift/7d05a7e8413ef8c19695152ad749f435b6ce09e5/lib/extra-package.dhalli
+        sha256:0cee6fd112dd9b821b12b7110f311d9b22d1a3bf74d324e883f39629ea252a4e
 
 let Source =
-  		https://raw.githubusercontent.com/zulch-lang/rift/f1155219b65393dcfec37cf57fa1b905d031c567/lib/extra-package.dhall
+  		https://raw.githubusercontent.com/zilch-lang/rift/7d05a7e8413ef8c19695152ad749f435b6ce09e5/lib/source.dhall
         sha256:ffaf30bb1622a6263e063a95de730c38d44c235ebe540052d7b30c750404e4b4
 
-let PackageDependency =
-      { {- | The name of the package in the package set. -}
-        package : Text
-      , {- | A predicate which must hold when importing this package. -}
-        version : Version.Type → Bool
-      }
-
 let Component =
-      let K = < Executable | Library >
-
-      in  { Kind = K
-          , Type =
-              { {- |
-                  The name of the component.
-                -}
-                name : Text
-              , version : Version.Type
-              , dependencies : List PackageDependency
-              , {- |
-                  A list of directories containing Zilch source files.
-
-                  When the component is for an executable, at least one of the files
-                  should be a main module.
-                -}
-                source-dirs : List Text
-              , kind : K
-              , {- |
-                  Additional flags to give to the Zilch compiler.
-                -}
-                gzc-flags : List Text
-              }
-          , default =
-            { dependencies = [] : List PackageDependency
-            , gzc-flags = [] : List Text
-            }
-          }
+  		https://raw.githubusercontent.com/zilch-lang/rift/7d05a7e8413ef8c19695152ad749f435b6ce09e5/lib/component.dhall
+        sha256:bd4c557eb36312ea58510a87bc75a206e871f141c249e52df36d848e916f96a2
 
 let
     {- |
@@ -83,7 +50,6 @@ let {- |
 in  { Project
     , Configuration
     , Version
-    , PackageDependency
     , Component
     , ExtraDependency
     , LTS

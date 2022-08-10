@@ -7,7 +7,7 @@ let Version =
         sha256:596564e58f0959e1cccfa1bb154948adb195d9220d381f0742f4058c9d083b58
 
 let ExtraDependency =
-      https://raw.githubusercontent.com/zilch-lang/rift/7d05a7e8413ef8c19695152ad749f435b6ce09e5/lib/extra-package.dhalli
+      https://raw.githubusercontent.com/zilch-lang/rift/7d05a7e8413ef8c19695152ad749f435b6ce09e5/lib/extra-package.dhall
         sha256:0cee6fd112dd9b821b12b7110f311d9b22d1a3bf74d324e883f39629ea252a4e
 
 let Source =

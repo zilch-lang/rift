@@ -5,6 +5,7 @@ module Rift.Commands.Impl.Utils.ExtraDependencyCacheManager where
 import Control.Monad.Extra (unlessM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.Map as Map
+import qualified Data.MultiMap as MultiMap
 import Data.Text (Text)
 import qualified Data.Text.IO as Text
 import Dhall (auto, inputFile)
@@ -24,7 +25,7 @@ insertExtraDependency name version path src env = do
 
   liftIO $ withLockFile (riftCache env </> "extra-deps" </> "hashes" <.> "lock") do
     ExtraCache versions paths <- readExtraCache cachePath
-    let versions' = Map.insert name version versions
+    let versions' = MultiMap.insert name version versions
         paths' = Map.insert (name, version) (path, src) paths
     writeExtraCache cachePath (ExtraCache versions' paths')
 
@@ -34,7 +35,7 @@ insertExtraDependency name version path src env = do
 readExtraCache :: (MonadIO m) => FilePath -> m ExtraCache
 readExtraCache path = do
   unlessM (liftIO $ doesFileExist path) do
-    writeExtraCache path (ExtraCache mempty mempty)
+    writeExtraCache path (ExtraCache MultiMap.empty mempty)
   liftIO $ inputFile auto path
 
 -- | Write the cache back to a file.

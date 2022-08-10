@@ -18,17 +18,23 @@ import Data.Bifunctor (bimap, first)
 import Data.Function ((&))
 import Data.Functor ((<&>))
 import qualified Data.HashMap.Strict as HashMap
+import Data.List (sortBy)
 import qualified Data.List as List
+import qualified Data.Map as Map
 import Data.Maybe (fromMaybe, isNothing, mapMaybe)
+import qualified Data.MultiMap as MultiMap
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import Dhall (auto, inputFile)
+import Rift.Commands.Impl.Utils.ExtraDependencyCacheManager (readExtraCache)
 import Rift.Commands.Impl.Utils.GitTags (fetchAllTags)
-import Rift.Commands.Impl.Utils.Paths (ltsPath, packagePath, projectDhall)
+import Rift.Commands.Impl.Utils.Paths (extraCachePath, ltsPath, packagePath, projectDhall)
+import Rift.Config.ExtraDependencyCache (ExtraCache (..))
 import Rift.Config.Package (Package (..))
 import Rift.Config.PackageSet
 import Rift.Config.Project (ComponentType (..), ProjectType)
+import Rift.Config.Source (prettySource)
 import Rift.Environment (Environment (..))
 import Rift.Internal.LockFile (withLockFile)
 import qualified Rift.Logger as Logger
@@ -60,8 +66,11 @@ searchPackageCommand pkgName env@Env {..} = do
     allVersionsInAllLTSs <- (HashMap.toList <$> queryAllTagsForPackage env (allTags <> ["unstable"])) `finally` restoreToUnstable
     let sortedPackagesOnLTS = (first readLTSVersion <$> allVersionsInAllLTSs) & mapMaybe (\(m, x) -> (,x) <$> m) & List.sort
 
-    case sortedPackagesOnLTS of
-      [] -> do
+    ExtraCache versions paths <- readExtraCache (extraCachePath riftCache)
+    let sortedExtraPackages = sortBy (flip compare) $ MultiMap.lookup pkgName versions
+
+    case (sortedPackagesOnLTS, sortedExtraPackages) of
+      ([], []) -> do
         Text.hPutStr stdout "Package "
         ANSI.hSetSGR stdout [ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.Magenta, ANSI.SetConsoleIntensity ANSI.BoldIntensity]
         Text.hPutStr stdout pkgName
@@ -87,6 +96,26 @@ searchPackageCommand pkgName env@Env {..} = do
             else do
               outputLTS stdout k
               outputVersions stdout versions
+
+        let versionsAndSources = (\v -> (v, paths Map.! (pkgName, v))) <$> sortedExtraPackages
+        case sortedExtraPackages of
+          [] -> pure ()
+          _ -> do
+            Text.hPutStr stdout "- as "
+            ANSI.hSetSGR stdout [ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.Cyan]
+            Text.hPutStr stdout "extra dependencies"
+            ANSI.hSetSGR stdout [ANSI.Reset]
+            Text.hPutStrLn stdout ":"
+
+            forM_ versionsAndSources \(ver, (_, src)) -> do
+              outputVersions stdout [(Just ver, False, False)]
+              Text.hPutStr stdout "    (source is "
+              ANSI.hSetSGR stdout [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.Black, ANSI.SetItalicized True]
+              Text.hPutStr stdout $ Text.replace "\n" " " (prettySource src)
+              ANSI.hSetSGR stdout [ANSI.Reset]
+              Text.hPutStrLn stdout ")"
+
+    pure ()
   where
     queryAllTagsForPackage env tags = do
       (uncached, versionsFound) <-

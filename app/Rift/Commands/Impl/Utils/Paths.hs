@@ -53,3 +53,6 @@ ltsPath relativeTo lts = do
       ltsHash <- liftIO $ Text.readFile ltsHashFile
       pure . Just $ relativeTo </> ltsTag <.> Text.unpack ltsHash
     else pure Nothing
+
+extraCachePath :: FilePath -> FilePath
+extraCachePath base = base </> "extra-deps" </> "hashes" <.> "cache"

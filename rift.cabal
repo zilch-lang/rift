@@ -88,6 +88,7 @@ executable rift
     , hashable
     , megaparsec
     , modern-uri
+    , multimap
     , optparse-applicative
     , parser-combinators
     , raw-strings-qq

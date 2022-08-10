@@ -60,3 +60,4 @@ executables:
     - zip-archive
     - megaparsec
     - parser-combinators
+    - multimap

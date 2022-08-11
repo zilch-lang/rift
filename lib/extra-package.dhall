@@ -4,7 +4,7 @@ let Source =
 
 let Version =
       ./version.dhall
-        sha256:596564e58f0959e1cccfa1bb154948adb195d9220d381f0742f4058c9d083b58
+        sha256:54a70816c7185df69cd1d1a36410cc57a496e78d68422bc9d4332b6801d24275
 
 in  { Type =
         { -- | The name of the package

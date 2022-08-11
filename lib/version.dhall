@@ -39,6 +39,8 @@ let equal =
         &&  Natural/equal v1.minor v2.minor
         &&  Natural/equal v1.bug v2.bug
 
+let notEqual = λ(v1 : Ty) → λ(v2 : Ty) → Bool/not (equal v1 v2)
+
 let lessThan =
       λ(v1 : Ty) →
       λ(v2 : Ty) →
@@ -71,9 +73,16 @@ let {- | A builder to create a version in a more readable way than writing a rec
 in  { Type = Ty
     , show
     , equal
+    , `==` = equal
     , lessThan
+    , `<` = lessThan
     , lessThanEqual
+    , `<=` = lessThanEqual
     , greaterThan
+    , `>` = greaterThan
     , greaterThanEqual
+    , `>=` = greaterThanEqual
+    , notEqual
+    , `!=` = notEqual
     , v
     }

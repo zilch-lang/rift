@@ -1,4 +1,5 @@
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -32,7 +33,7 @@ import System.FilePath ((<.>), (</>))
 import Text.RawString.QQ (r)
 import Turtle (ExitCode (..), empty, procStrictWithErr)
 
-newProjectCommand :: (MonadIO m) => FilePath -> Maybe Text -> Maybe Text -> Bool -> Environment -> m ()
+newProjectCommand :: (?logLevel :: Int, MonadIO m) => FilePath -> Maybe Text -> Maybe Text -> Bool -> Environment -> m ()
 newProjectCommand path name template force Env {..} = do
   unlessM (liftIO $ doesDirectoryExist path) do
     liftIO $ throwIO (CannotCreateProjectInNonDirectory path)

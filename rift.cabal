@@ -65,6 +65,7 @@ executable rift
       Rift.Config.Source
       Rift.Config.Template
       Rift.Config.Version
+      Rift.Config.Version.Parser
       Rift.Environment
       Rift.Environment.Def
       Rift.Environment.Setup

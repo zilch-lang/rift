@@ -1,6 +1,7 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
@@ -104,7 +105,7 @@ readLTSVersion v =
     _ -> Nothing
 
 -- | Converts a dhall snapshot specification into a concrete 'Snapshot' value.
-snapshotFromDhallFile :: FilePath -> Environment -> IO Snapshot
+snapshotFromDhallFile :: (?logLevel :: Int) => FilePath -> Environment -> IO Snapshot
 snapshotFromDhallFile dhallFile _ = handle' $ inputFile auto dhallFile
   where
     handle' act =

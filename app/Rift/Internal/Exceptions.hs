@@ -54,6 +54,8 @@ data RiftException
       FilePath
   | RequestUriIsNotHttpOrHttps
       Text
+  | InvalidSemanticVersion
+      String
 
 instance Show RiftException where
   show (LTSNotFound lts) =
@@ -117,5 +119,7 @@ instance Show RiftException where
     "The downloaded project (at " <> path <> ") does not appear to be a Rift project.\nReason: The file '" <> projectDhall <> "' is not present."
   show (RequestUriIsNotHttpOrHttps uri) =
     "URIs with non-HTTP(S) schemes are not supported (while trying to fetch file '" <> Text.unpack uri <> "')."
+  show (InvalidSemanticVersion megaparsecError) =
+    "Invalid semantic version:\n" <> megaparsecError
 
 instance Exception RiftException

@@ -1,5 +1,6 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -23,7 +24,7 @@ import qualified System.Envy as E
 import System.Exit (exitFailure)
 import System.FilePath (takeDirectory, (</>))
 
-type Setup m = (MonadIO m)
+type Setup m = (?logLevel :: Int, MonadIO m)
 
 -- | Setups the environment needed for the project manager to correctly work:
 --

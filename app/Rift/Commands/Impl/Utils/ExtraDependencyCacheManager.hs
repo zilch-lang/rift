@@ -1,8 +1,8 @@
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE ImplicitParams #-}
 
 module Rift.Commands.Impl.Utils.ExtraDependencyCacheManager where
 
-import Control.Monad.Extra (unlessM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.Map as Map
 import qualified Data.MultiMap as MultiMap
@@ -19,7 +19,7 @@ import Rift.Internal.LockFile (withLockFile)
 import System.Directory (doesFileExist)
 import System.FilePath ((<.>), (</>))
 
-insertExtraDependency :: (MonadIO m) => Text -> SemVer -> FilePath -> Source -> Environment -> m ()
+insertExtraDependency :: (?logLevel :: Int, MonadIO m) => Text -> SemVer -> FilePath -> Source -> Environment -> m ()
 insertExtraDependency name version path src env = do
   let cachePath = riftCache env </> "extra-deps" </> "hashes" <.> "cache"
 

@@ -1,4 +1,5 @@
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -43,7 +44,7 @@ import System.FilePath ((<.>), (</>))
 import System.IO (stdout)
 import Turtle (ExitCode (..), empty, procStrictWithErr)
 
-searchPackageCommand :: MonadIO m => Text -> Environment -> m ()
+searchPackageCommand :: (?logLevel :: Int, MonadIO m) => Text -> Environment -> m ()
 searchPackageCommand pkgName env@Env {..} = do
   let pkgsHome = riftCache </> "pkgs"
 

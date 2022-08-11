@@ -1,4 +1,5 @@
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -21,7 +22,7 @@ import System.Exit (ExitCode, exitFailure)
 import System.FilePath (takeDirectory)
 
 -- | Hash the Dhall file given.
-dhallHash :: FilePath -> IO Text
+dhallHash :: (?logLevel :: Int) => FilePath -> IO Text
 dhallHash file = handle' do
   expr <- getExpression NoCensor (InputFile file)
   resolvedExpr <- loadRelativeTo (takeDirectory file) IgnoreSemanticCache expr

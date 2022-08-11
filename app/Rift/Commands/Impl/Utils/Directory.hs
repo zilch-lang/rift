@@ -1,4 +1,5 @@
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
@@ -12,7 +13,7 @@ import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist,
 import System.FilePath ((</>))
 
 -- | Recursively copy the input directory to the output directory.
-copyDirectoryRecursive :: FilePath -> FilePath -> (FilePath -> Bool) -> IO ()
+copyDirectoryRecursive :: (?logLevel :: Int) => FilePath -> FilePath -> (FilePath -> Bool) -> IO ()
 copyDirectoryRecursive from to filterChildren = do
   createDirectoryIfMissing True to
   children <- filter filterChildren <$> listDirectory from

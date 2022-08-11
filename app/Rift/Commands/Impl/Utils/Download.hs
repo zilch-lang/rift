@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -53,7 +54,7 @@ import System.IO.Temp (withSystemTempDirectory)
 import qualified Text.URI as URI
 import Turtle (empty, procStrictWithErr)
 
-resolvePackage :: (MonadIO m, MonadHttp m, MonadMask m) => Text -> LTSVersion -> VersionConstraint -> [Package] -> Environment -> m (FilePath, Package)
+resolvePackage :: (?logLevel :: Int, MonadIO m, MonadHttp m, MonadMask m) => Text -> LTSVersion -> VersionConstraint -> [Package] -> Environment -> m (FilePath, Package)
 resolvePackage name lts (constraintExpr, versionConstraint) extra env = do
   ltsDir <- ltsPath (riftCache env) lts
 
@@ -100,13 +101,13 @@ resolvePackage name lts (constraintExpr, versionConstraint) extra env = do
                     pkgPath = packagePath pkg (ltsDir </> "sources")
                 pure (pkgPath, pkg)
 
-fetchPackageTo' :: (MonadIO m, MonadHttp m, MonadMask m) => LTSVersion -> FilePath -> FilePath -> Bool -> Bool -> Environment -> FilePath -> Package -> m (Acyclic.AdjacencyMap (FilePath, Package))
+fetchPackageTo' :: (?logLevel :: Int, MonadIO m, MonadHttp m, MonadMask m) => LTSVersion -> FilePath -> FilePath -> Bool -> Bool -> Environment -> FilePath -> Package -> m (Acyclic.AdjacencyMap (FilePath, Package))
 fetchPackageTo' lts ltsDir extraDepDir force infoCached env pkgPath pkg =
   Acyclic.toAcyclic <$> fetchPackageTo Cyclic.empty lts ltsDir extraDepDir force infoCached env pkgPath pkg >>= \case
     Just graph -> pure graph
     Nothing -> undefined
 
-fetchPackageTo :: (MonadIO m, MonadHttp m, MonadMask m) => Cyclic.AdjacencyMap (FilePath, Package) -> LTSVersion -> FilePath -> FilePath -> Bool -> Bool -> Environment -> FilePath -> Package -> m (Cyclic.AdjacencyMap (FilePath, Package))
+fetchPackageTo :: (?logLevel :: Int, MonadIO m, MonadHttp m, MonadMask m) => Cyclic.AdjacencyMap (FilePath, Package) -> LTSVersion -> FilePath -> FilePath -> Bool -> Bool -> Environment -> FilePath -> Package -> m (Cyclic.AdjacencyMap (FilePath, Package))
 fetchPackageTo depGraph lts ltsDir extraDepDir force infoCached env pkgPath pkg@Pkg {..} = do
   checkCycles (pkgPath, pkg) depGraph
 
@@ -169,7 +170,7 @@ checkConsistency name ver cs = case Map.lookup name cs of
     when (ver /= ver2) do
       liftIO $ throwIO $ InconsistentComponentVersions ver ver2
 
-downloadAndExtract :: (MonadIO m, MonadHttp m, MonadMask m) => FilePath -> Source -> Environment -> m (FilePath, ProjectType, Configuration)
+downloadAndExtract :: (?logLevel :: Int, MonadIO m, MonadHttp m, MonadMask m) => FilePath -> Source -> Environment -> m (FilePath, ProjectType, Configuration)
 downloadAndExtract dir dep env =
   case dep of
     Tar (Remote url) sha256 -> unpackArchive url sha256 \path dir tar -> do

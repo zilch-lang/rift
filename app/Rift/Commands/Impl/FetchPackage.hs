@@ -1,4 +1,5 @@
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 module Rift.Commands.Impl.FetchPackage where
@@ -12,11 +13,12 @@ import Network.HTTP.Req (MonadHttp)
 import Rift.Commands.Impl.Utils.Download (fetchPackageTo', resolvePackage)
 import Rift.Commands.Impl.Utils.Paths (ltsPath)
 import Rift.Config.PackageSet (LTSVersion (..), readLTSVersion)
-import Rift.Config.Version (parseVersionConstraint, trueConstraint)
+import Rift.Config.Version (trueConstraint)
+import Rift.Config.Version.Parser (parseVersionConstraint)
 import Rift.Environment (Environment (..))
 import System.FilePath ((</>))
 
-fetchPackageCommand :: (MonadIO m, MonadHttp m, MonadMask m) => Text -> Maybe Text -> Maybe Text -> Bool -> Environment -> m ()
+fetchPackageCommand :: (?logLevel :: Int, MonadIO m, MonadHttp m, MonadMask m) => Text -> Maybe Text -> Maybe Text -> Bool -> Environment -> m ()
 fetchPackageCommand name versionConstraint ltsName force env = do
   let lts = fromMaybe Unstable (ltsName >>= readLTSVersion)
   constr <- fromMaybe trueConstraint <$> traverse parseVersionConstraint versionConstraint

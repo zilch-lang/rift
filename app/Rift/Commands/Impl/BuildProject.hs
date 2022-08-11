@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -14,7 +15,6 @@ import Control.Monad (forM, void)
 import Control.Monad.Catch (MonadMask)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Bifunctor (second)
-import Data.Foldable (fold)
 import Data.List (nub, uncons)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -29,7 +29,7 @@ import Rift.Commands.Impl.Utils.Download (fetchPackageTo, resolvePackage)
 import Rift.Commands.Impl.Utils.Paths (dotRift, ltsPath, riftDhall)
 import Rift.Config.Configuration (Configuration (..))
 import Rift.Config.Package (Package (..))
-import Rift.Config.PackageSet (LTSVersion, Snapshot (..), snapshotFromDhallFile)
+import Rift.Config.PackageSet (LTSVersion)
 import Rift.Config.Project (ComponentType (..))
 import Rift.Config.Source (Location (Local), Source (Directory))
 import Rift.Config.Version (PackageDependency (..))
@@ -74,7 +74,7 @@ import System.FilePath ((</>))
 --   5.2. If a dependency is an executable, the behavior is not yet fixed (we may want to throw an error here)
 --
 --   6. I don't know
-buildProjectCommand :: (MonadIO m, MonadHttp m, MonadMask m) => Bool -> Integer -> Bool -> [Text] -> Environment -> m ()
+buildProjectCommand :: (?logLevel :: Int, MonadIO m, MonadHttp m, MonadMask m) => Bool -> Integer -> Bool -> [Text] -> Environment -> m ()
 buildProjectCommand dryRun nbCores dirtyFiles componentsToBuild env = do
   !components <- readPackageDhall "."
   Configuration lts extraDeps <- liftIO $ inputFile auto riftDhall
@@ -108,7 +108,7 @@ getComponentsByName components (c : cs) = case Map.lookup c components of
     let others = Map.delete c components
      in Map.insert c c1 <$> getComponentsByName others cs
 
-buildComponent :: (MonadIO m, MonadHttp m, MonadMask m) => LTSVersion -> FilePath -> Bool -> Bool -> Environment -> Text -> ComponentType -> m ()
+buildComponent :: (?logLevel :: Int, MonadIO m, MonadHttp m, MonadMask m) => LTSVersion -> FilePath -> Bool -> Bool -> Environment -> Text -> ComponentType -> m ()
 buildComponent lts ltsDir dryRun dirtyFiles env name (ComponentType ver deps sources kind flags) = do
   cwd <- liftIO getCurrentDirectory
   let thisPkg = Pkg name ver (Directory $ Local $ Text.pack cwd) [] False False

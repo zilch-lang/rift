@@ -1,5 +1,5 @@
 {-# LANGUAGE BlockArguments #-}
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
@@ -52,7 +52,7 @@ import Turtle (ExitCode (..), empty, procStrictWithErr)
 --   * If no:
 --
 --     * Clone the repository to @$RIFT_HOME/pkgs@ and report any error
-updatePackageSetCommand :: (MonadMask m, MonadIO m) => Environment -> m ()
+updatePackageSetCommand :: (?logLevel :: Int, MonadMask m, MonadIO m) => Environment -> m ()
 updatePackageSetCommand Env {..} = do
   let pkgsHome = riftCache </> "pkgs"
       hashes = riftCache </> "hashes"

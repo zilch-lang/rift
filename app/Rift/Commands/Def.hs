@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE RecordWildCards #-}
 
 {-# OPTIONS -Wno-overlapping-patterns #-}
 {-# OPTIONS -Wno-unused-matches #-}

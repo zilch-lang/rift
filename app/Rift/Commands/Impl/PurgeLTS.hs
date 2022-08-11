@@ -1,4 +1,5 @@
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Rift.Commands.Impl.PurgeLTS where
@@ -12,7 +13,7 @@ import qualified Rift.Logger as Logger
 import System.Directory (listDirectory, removeDirectoryRecursive)
 import System.FilePath (dropExtensions, (<.>), (</>))
 
-purgeAllOldLTS :: (MonadIO m) => Environment -> m ()
+purgeAllOldLTS :: (?logLevel :: Int, MonadIO m) => Environment -> m ()
 purgeAllOldLTS env = do
   let dir = riftCache env
 

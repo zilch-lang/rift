@@ -67,6 +67,7 @@ executable rift
       Rift.Environment.Def
       Rift.Environment.Setup
       Rift.Environment.TH
+      Rift.Internal.Exceptions
       Rift.Internal.LockFile
       Rift.Logger
       Paths_rift
@@ -75,6 +76,7 @@ executable rift
   ghc-options: -Wall -Wextra -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       aeson
+    , algebraic-graphs
     , ansi-terminal
     , base >=4.7 && <5
     , bytestring
@@ -92,6 +94,7 @@ executable rift
     , multimap
     , optparse-applicative
     , parser-combinators
+    , prettyprinter
     , raw-strings-qq
     , req
     , tar

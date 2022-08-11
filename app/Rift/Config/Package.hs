@@ -2,6 +2,7 @@
 
 module Rift.Config.Package where
 
+import Data.Function (on)
 import Data.Text (Text)
 import Dhall.Marshal.Decode (FromDhall (..), auto, field, record)
 import Rift.Config.Source (Source)
@@ -16,6 +17,12 @@ data Package = Pkg
     deprecated :: Bool
   }
   deriving (Show)
+
+instance Eq Package where
+  (==) = (==) `on` name
+
+instance Ord Package where
+  (<=) = (<=) `on` name
 
 data ExtraPackage = ExtraPkg
   { extraName :: Text,

@@ -1,5 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -7,6 +9,8 @@
 
 module Rift.Commands.Impl.Utils.Download where
 
+import qualified Algebra.Graph.Acyclic.AdjacencyMap as Acyclic
+import qualified Algebra.Graph.AdjacencyMap as Cyclic
 import qualified Codec.Archive.Tar as Tar
 import qualified Codec.Archive.Zip as Zip
 import qualified Codec.Compression.GZip as GZip
@@ -16,8 +20,10 @@ import Control.Monad.Extra (unlessM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Crypto.Hash (Digest, SHA256, hash)
 import qualified Data.ByteString.Lazy as LBS
+import Data.Foldable (foldl', foldrM)
 import Data.Function (on)
 import Data.List (find, sortBy)
+import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
@@ -34,7 +40,7 @@ import Rift.Config.Configuration (Configuration (..))
 import Rift.Config.Package (ExtraPackage (..), Package (..))
 import Rift.Config.PackageSet (LTSVersion, Snapshot (..))
 import Rift.Config.Project (ComponentType (..), ProjectType)
-import Rift.Config.Source (Location (..), Source (..))
+import Rift.Config.Source (Location (..), Source (..), prettySource)
 import Rift.Config.Version (ConstraintExpr, PackageDependency (..), SemVer, VersionConstraint, trueConstraint)
 import Rift.Environment.Def (Environment (..))
 import qualified Rift.Logger as Logger
@@ -45,8 +51,8 @@ import System.IO.Temp (withSystemTempDirectory)
 import qualified Text.URI as URI
 import Turtle (empty, procStrictWithErr)
 
-resolvePackage :: (MonadIO m, MonadHttp m, MonadMask m) => Text -> LTSVersion -> VersionConstraint -> Bool -> Environment -> m Package
-resolvePackage name lts (constraintExpr, versionConstraint) force env = do
+resolvePackage :: (MonadIO m, MonadHttp m, MonadMask m) => Text -> LTSVersion -> VersionConstraint -> Bool -> [Package] -> Environment -> m Package
+resolvePackage name lts (constraintExpr, versionConstraint) force extra env = do
   ltsDir <- ltsPath (riftCache env) lts
 
   case ltsDir of
@@ -55,7 +61,7 @@ resolvePackage name lts (constraintExpr, versionConstraint) force env = do
       liftIO exitFailure
     Just ltsDir -> do
       Snapshot _ _ packageSet <- liftIO (inputFile auto (ltsDir </> "lts" </> "packages" </> "set" <.> "dhall") :: IO Snapshot)
-      let packages = filter (\(Pkg n _ _ _ _ _) -> n == name) packageSet
+      let packages = filter (\(Pkg n _ _ _ _ _) -> n == name) (extra <> packageSet)
 
       case sortBy (flip compare `on` version) packages of
         [] -> do
@@ -75,36 +81,78 @@ resolvePackage name lts (constraintExpr, versionConstraint) force env = do
                 <> constraintExpr
                 <> "' holds."
             liftIO exitFailure
-          p : _ -> do
-            fetchPackageTo' lts (ltsDir </> "sources") (riftCache env </> "extra-deps") force env p
-            pure p
+          ps@(p : _) -> do
+            let candidates = filter ((==) (version p) . version) ps
 
-fetchPackageTo' :: (MonadIO m, MonadHttp m, MonadMask m) => LTSVersion -> FilePath -> FilePath -> Bool -> Environment -> Package -> m ()
-fetchPackageTo' = fetchPackageTo []
+            let candidates2 = filter (not . broken) candidates
+            when (null candidates2) do
+              Logger.error $ "Cannot find a non-broken source for the package '" <> name <> " at version " <> Text.pack (show (version p))
+              liftIO exitFailure
 
-fetchPackageTo :: (MonadIO m, MonadHttp m, MonadMask m) => [Package] -> LTSVersion -> FilePath -> FilePath -> Bool -> Environment -> Package -> m ()
-fetchPackageTo stack lts ltsDir extraDepDir force env pkg@Pkg {..} = do
-  let name' = name
-  case stack of
-    [] -> pure ()
-    [_] -> pure ()
-    stack -> case find (\Pkg {..} -> name' == name) stack of
-      Just _ -> do
-        Logger.error $ "Cyclic dependency encountered:\n" <> showCycle stack
-        liftIO exitFailure
-      Nothing -> pure ()
+            when (length candidates2 /= length candidates) do
+              Logger.warn $ "Ignoring broken sources for package '" <> name <> "'"
+
+            let candidates3 = filter (not . deprecated) candidates
+            if null candidates3
+              then do
+                Logger.warn $ "Cannot find a source for the package '" <> name <> " at version " <> Text.pack (show (version p)) <> " which is not deprecated"
+
+                when (length candidates2 > 1) do
+                  Logger.error $
+                    foldl'
+                      (\acc p -> acc <> "\n- " <> prettySource (src p))
+                      ( "Ambiguous package '"
+                          <> name
+                          <> "' for version "
+                          <> Text.pack (show (version p))
+                          <> ".\nFound the following non-deprecated and non-broken candidates:"
+                      )
+                      candidates2
+                  liftIO exitFailure
+
+                pure (head candidates2)
+              else do
+                when (length candidates3 /= length candidates2) do
+                  Logger.warn $ "Ignoring deprecated sources for the package '" <> name <> "'"
+
+                when (length candidates3 > 1) do
+                  Logger.error $
+                    foldl'
+                      (\acc p -> acc <> "\n- " <> prettySource (src p))
+                      ( "Ambiguous package '"
+                          <> name
+                          <> "' for version "
+                          <> Text.pack (show (version p))
+                          <> ".\nFound the following non-deprecated and non-broken candidates:"
+                      )
+                      candidates3
+                  liftIO exitFailure
+
+                pure (head candidates3)
+
+fetchPackageTo' :: (MonadIO m, MonadHttp m, MonadMask m) => LTSVersion -> FilePath -> FilePath -> Bool -> Environment -> Package -> m (Acyclic.AdjacencyMap Package)
+fetchPackageTo' lts ltsDir extraDepDir force env pkg =
+  Acyclic.toAcyclic <$> fetchPackageTo Cyclic.empty lts ltsDir extraDepDir force env pkg >>= \case
+    Just graph -> pure graph
+    Nothing -> undefined
+
+fetchPackageTo :: (MonadIO m, MonadHttp m, MonadMask m) => Cyclic.AdjacencyMap Package -> LTSVersion -> FilePath -> FilePath -> Bool -> Environment -> Package -> m (Cyclic.AdjacencyMap Package)
+fetchPackageTo depGraph lts ltsDir extraDepDir force env pkg@Pkg {..} = do
+  checkCycles pkg depGraph
 
   let pkgDir = packagePath pkg ltsDir
-  (_, components, configuration) <- do
+  (graph', _, components, configuration) <- do
     pathExists <- liftIO $ doesDirectoryExist pkgDir
 
     if not force && pathExists
       then do
-        Logger.info $ "Package '" <> name <> "' is already cached.\nUse --force to redownload it."
+        case src of
+          Directory _ -> pure ()
+          _ -> Logger.info $ "Package '" <> name <> "' is already cached.\nUse --force to redownload it."
 
-        project <- liftIO $ inputFile auto (pkgDir </> projectDhall)
+        project <- liftIO $ readPackageDhall pkgDir
         configuration <- liftIO $ inputFile auto (pkgDir </> riftDhall)
-        pure (pkgDir, project, configuration)
+        pure (depGraph, pkgDir, project, configuration)
       else do
         (pkgDir, project, configuration@(Configuration _ extraDeps)) <- downloadAndExtract pkgDir src env
         let deps = Map.elems project >>= \(ComponentType _ d _ _ _) -> d
@@ -116,46 +164,48 @@ fetchPackageTo stack lts ltsDir extraDepDir force env pkg@Pkg {..} = do
 
           when (force || not pathExists) do
             (_, components, _) <- downloadAndExtract srcPath source env
-            -- checkVersionIsCoherent version component components
+            checkConsistency name version components
             insertExtraDependency name version srcPath source env
 
         -- - fetch dependencies
-        forM_ deps \(Version name constraint) -> do
-          let stack' = pkg : stack
-          pkg <- resolvePackage name lts constraint force env
-          fetchPackageTo stack' lts ltsDir extraDepDir force env pkg
+        graph' <- foldrM (resolveDep pkg lts ltsDir extraDepDir force env) depGraph deps
 
-          pure ()
+        pure (graph', pkgDir, project, configuration)
 
-        pure (pkgDir, project, configuration)
+  checkConsistency name version components
 
-  -- checkVersionIsCoherent version component components
-
-  pure ()
+  pure graph'
   where
-    showCycle = mappend "↳ " . showCycle' 0
+    resolveDep :: (MonadIO m, MonadHttp m, MonadMask m) => Package -> LTSVersion -> FilePath -> FilePath -> Bool -> Environment -> PackageDependency -> Cyclic.AdjacencyMap Package -> m (Cyclic.AdjacencyMap Package)
+    resolveDep thisPkg lts ltsDir extraDepDir force env (Version name constraint) depGraph = do
+      pkg <- resolvePackage name lts constraint force [] env
+      fetchPackageTo (depGraph `Cyclic.overlay` Cyclic.edge thisPkg pkg) lts ltsDir extraDepDir force env pkg
+    {-# INLINE resolveDep #-}
+
+    checkCycles pkg depGraph = dfs [pkg] pkg depGraph
+
+    dfs stack root graph =
+      forM_ (Cyclic.postSet root graph) \pkg -> do
+        when (pkg `elem` stack) do
+          Logger.error $ "Cyclic dependency encountered:\n" <> showCycle (reverse $ pkg : stack)
+          liftIO exitFailure
+        dfs (pkg : stack) pkg graph
+
+    showCycle = mappend "↳ Package " . showCycle' 2
 
     showCycle' _ [] = ""
     showCycle' _ [Pkg name _ _ _ _ _] = name
-    showCycle' n (Pkg name _ _ _ _ _ : ps) = name <> "\n" <> Text.replicate n " " <> "↳ depends on " <> showCycle' (n + 2) ps
+    showCycle' n (Pkg name _ _ _ _ _ : ps) = name <> "\n" <> Text.replicate n " " <> "↳ depends on package " <> showCycle' (n + 2) ps
 
--- checkVersionIsCoherent :: (MonadIO m) => SemVer -> Maybe Text -> [ComponentType] -> m ()
--- checkVersionIsCoherent _ (Just compName) [] = do
---   Logger.error $ "Component named '" <> compName <> "' not found in the fetched package."
---   liftIO exitFailure
--- checkVersionIsCoherent _ Nothing [] = do
---   Logger.error "No component found in package."
---   liftIO exitFailure
--- checkVersionIsCoherent ver Nothing [ComponentType ver2 _ _ _ _] = do
---   when (ver /= ver2) do
---     Logger.error $ "Inconsistency detected: component was expected to have version " <> Text.pack (show ver) <> " but the version " <> Text.pack (show ver2) <> " was found."
---     liftIO exitFailure
--- checkVersionIsCoherent _ Nothing (_ : _) = do
---   Logger.error "Multiple components found but none have been specified"
---   liftIO exitFailure
--- checkVersionIsCoherent ver (Just compName) (c@(ComponentType name _ _ _ _ _) : comps)
---   | compName /= name = checkVersionIsCoherent ver (Just compName) comps
---   | otherwise = checkVersionIsCoherent ver Nothing [c]
+checkConsistency :: (MonadIO m) => Text -> SemVer -> Map Text ComponentType -> m ()
+checkConsistency name ver cs = case Map.lookup name cs of
+  Nothing -> do
+    Logger.error $ "Component named '" <> name <> "' not found in the fetched package."
+    liftIO exitFailure
+  Just (ComponentType ver2 _ _ _ _) -> do
+    when (ver /= ver2) do
+      Logger.error $ "Inconsistency detected: component was expected to have version " <> Text.pack (show ver) <> " but the version " <> Text.pack (show ver2) <> " was found."
+      liftIO exitFailure
 
 downloadAndExtract :: (MonadIO m, MonadHttp m, MonadMask m) => FilePath -> Source -> Environment -> m (FilePath, ProjectType, Configuration)
 downloadAndExtract dir dep env =

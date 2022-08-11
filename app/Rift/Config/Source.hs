@@ -50,6 +50,7 @@ prettySource (Git loc rev) = "Git { url = " <> prettyLocation loc <> " as Locati
 prettySource (Tar loc sha256) = "Tar { url = " <> prettyLocation loc <> " as Location, sha256 = \"" <> sha256 <> "\" }"
 prettySource (TarGz loc sha256) = "TarGz { url = " <> prettyLocation loc <> " as Location, sha256 = \"" <> sha256 <> "\" }"
 prettySource (Zip loc sha256) = "Zip { url = " <> prettyLocation loc <> " as Location, sha256 = \"" <> sha256 <> "\" }"
+prettySource (Directory loc) = "Directory { path = " <> prettyLocation loc <> " as Location }"
 
 instance FromDhall Source where
   autoWith _ =

@@ -61,3 +61,5 @@ executables:
     - megaparsec
     - parser-combinators
     - multimap
+    - algebraic-graphs
+    - prettyprinter

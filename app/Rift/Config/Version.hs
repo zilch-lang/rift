@@ -23,6 +23,8 @@ import Dhall.Core (pretty)
 import Dhall.Marshal.Decode (Decoder (..), FromDhall (..), Natural, auto, field, natural, record)
 import Dhall.Marshal.Encode (ToDhall (..), encodeField, recordEncoder, (>$<), (>*<))
 import GHC.Generics (Generic)
+import qualified Prettyprinter as Pretty
+import qualified Prettyprinter.Render.Text as Pretty
 import qualified Rift.Logger as Logger
 import System.Directory.Internal.Prelude (exitFailure)
 import Text.Megaparsec (MonadParsec)
@@ -93,9 +95,11 @@ instance {-# OVERLAPPING #-} FromDhall VersionConstraint where
   autoWith _ =
     let decoder = auto :: Decoder (SemVer -> Bool)
      in Decoder
-          { extract = \e -> (pretty e,) <$> extract decoder e,
+          { extract = \e -> (pretty' e,) <$> extract decoder e,
             expected = expected decoder
           }
+    where
+      pretty' = Pretty.renderStrict . Pretty.layoutCompact . Pretty.group . Pretty.pretty
 
 trueConstraint :: VersionConstraint
 trueConstraint = ("λ(v : Version.Type) → True", const True)
@@ -131,12 +135,12 @@ data ConstraintExpr
 instance Show ConstraintExpr where
   show expr = "λ(ver : Version.Type) → " <> show' expr
     where
-      show' (Eq ver) = "ver == v " <> replace '.' ' ' (show ver)
-      show' (Neq ver) = "ver != v " <> replace '.' ' ' (show ver)
-      show' (Lt ver) = "ver < v " <> replace '.' ' ' (show ver)
-      show' (Gt ver) = "ver > v " <> replace '.' ' ' (show ver)
-      show' (Le ver) = "ver <= v " <> replace '.' ' ' (show ver)
-      show' (Ge ver) = "ver >= v " <> replace '.' ' ' (show ver)
+      show' (Eq ver) = "Version.`==` ver (Version.v " <> replace '.' ' ' (show ver) <> ")"
+      show' (Neq ver) = "Version.`!=` ver (Version.v " <> replace '.' ' ' (show ver) <> ")"
+      show' (Lt ver) = "Version.`<` ver (Version.v " <> replace '.' ' ' (show ver) <> ")"
+      show' (Gt ver) = "Version.`>` ver (Version.v " <> replace '.' ' ' (show ver) <> ")"
+      show' (Le ver) = "Version.`<=` ver (Version.v " <> replace '.' ' ' (show ver) <> ")"
+      show' (Ge ver) = "Version.`>=` ver (Version.v " <> replace '.' ' ' (show ver) <> ")"
       show' (And c1 c2) = "(" <> show' c1 <> " && " <> show' c2 <> ")"
       show' (Or c1 c2) = "(" <> show' c1 <> " || " <> show' c2 <> ")"
 

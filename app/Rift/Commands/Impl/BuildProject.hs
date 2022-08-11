@@ -7,13 +7,16 @@
 
 module Rift.Commands.Impl.BuildProject where
 
-import Control.Monad (forM_)
+import qualified Algebra.Graph.Acyclic.AdjacencyMap as Acyclic
+import qualified Algebra.Graph.AdjacencyMap as Cyclic
+import Control.Monad (forM, forM_, void)
 import Control.Monad.Catch (MonadMask)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Functor ((<&>))
 import Data.List (nub)
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Maybe (fromJust)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -21,16 +24,18 @@ import qualified Data.Text.IO as Text
 import Dhall (auto, inputFile)
 import Network.HTTP.Req (MonadHttp)
 import Rift.Commands.Impl.Utils.Config (readPackageDhall)
-import Rift.Commands.Impl.Utils.Download (downloadAndExtract, fetchPackageTo)
+import Rift.Commands.Impl.Utils.Download (downloadAndExtract, fetchPackageTo, resolvePackage)
 import Rift.Commands.Impl.Utils.ExtraDependencyCacheManager (insertExtraDependency)
-import Rift.Commands.Impl.Utils.Paths (projectDhall, riftDhall, sourcePath)
+import Rift.Commands.Impl.Utils.Paths (ltsPath, projectDhall, riftDhall, sourcePath)
 import Rift.Config.Configuration (Configuration (..))
 import Rift.Config.Package (ExtraPackage (..), Package (..))
-import Rift.Config.PackageSet (Snapshot (..), snapshotFromDhallFile)
+import Rift.Config.PackageSet (LTSVersion, Snapshot (..), snapshotFromDhallFile)
 import Rift.Config.Project (ComponentType (..), ProjectType)
 import Rift.Config.Source (Location (Local), Source (Directory))
+import Rift.Config.Version (PackageDependency (..))
 import Rift.Environment (Environment, riftCache)
 import qualified Rift.Logger as Logger
+import System.Directory (getCurrentDirectory)
 import System.Exit (exitFailure)
 import System.FilePath ((<.>), (</>))
 
@@ -74,60 +79,56 @@ buildProjectCommand dryRun nbCores dirtyFiles componentsToBuild env = do
   !components <- readPackageDhall "."
   Configuration lts extraDeps <- liftIO $ inputFile auto riftDhall
 
-  let ltsTag = show lts
-      ltsHashFile = riftCache env </> "hashes" </> ltsTag <.> "hash"
-  ltsHash <- liftIO $ Text.readFile ltsHashFile
-  let ltsDir = riftCache env </> (ltsTag <> "." <> Text.unpack ltsHash)
+  let ~ltsErr = do
+        Logger.error $ "LTS '" <> Text.pack (show lts) <> "' not found in the cache.\nMaybe you want to to run 'rift package update'?"
+        liftIO exitFailure
+  ltsDir <- maybe ltsErr pure =<< ltsPath (riftCache env) lts
 
   componentsToBuild <- case componentsToBuild of
     [] -> do
       Logger.debug "No component specified. Building all local components."
-      pure $ Map.elems components
-    cs -> getComponentsByName (Map.elems $ Map.restrictKeys components (Set.fromList cs)) (nub cs)
+      pure components
+    cs -> getComponentsByName (Map.restrictKeys components (Set.fromList cs)) (nub cs)
 
   snapshot <- liftIO $ snapshotFromDhallFile (ltsDir </> "lts" </> "packages" </> "set.dhall") env
 
-  let pkgs = componentsToBuild <&> \(ComponentType ver _ _ _ _) -> Pkg "?" ver (Directory $ Local ".") [] False False
-  --                                                                        ^^^ what to put here?
-  -- forM_ pkgs \thisPkg -> do
-  --   fetchPackageTo [thisPkg] lts ltsDir (riftCache env </> "extra-deps") False env thisPkg
+  -- TODO: fetch and build all extra dependencies, we may need them
+  -- but beware of dependency cycles!
+
+  void $ flip Map.traverseWithKey componentsToBuild (buildComponent lts ltsDir snapshot dryRun dirtyFiles env)
 
   pure ()
 
-getComponentsByName :: (MonadIO m) => [ComponentType] -> [Text] -> m [ComponentType]
-getComponentsByName _ [] = pure []
+getComponentsByName :: (MonadIO m) => Map Text a -> [Text] -> m (Map Text a)
+getComponentsByName _ [] = pure mempty
+getComponentsByName components (c : cs) = case Map.lookup c components of
+  Nothing -> do
+    Logger.error $ "Component named '" <> c <> "' not found in local project."
+    liftIO exitFailure
+  Just c1 ->
+    let others = Map.delete c components
+     in Map.insert c c1 <$> getComponentsByName others cs
 
--- getComponentsByName components (c : cs) = case findElem (\(ComponentType name _ _ _ _ _) -> name == c) components of
---   Nothing -> do
---     Logger.error $ "Component named '" <> c <> "' not found in local project."
---     liftIO exitFailure
---   Just (c1, others) -> (c1 :) <$> getComponentsByName others cs
+buildComponent :: (MonadIO m, MonadHttp m, MonadMask m) => LTSVersion -> FilePath -> Snapshot -> Bool -> Bool -> Environment -> Text -> ComponentType -> m ()
+buildComponent lts ltsDir snapshot dryRun dirtyFiles env name (ComponentType ver deps sources kind flags) = do
+  cwd <- liftIO getCurrentDirectory
+  let thisPkg = Pkg name ver (Directory $ Local $ Text.pack cwd) [] False False
 
-gatherDependencies :: (MonadIO m) => Snapshot -> [ComponentType] -> m ([Text], [Text])
-gatherDependencies _ [] = pure ([], [])
-gatherDependencies snapshot (ComponentType _ deps _ _ _ : cs) = pure ([], [])
+  -- get every dependency and fetch them in the cache
+  -- beware of cycles when constructing the dependency graph
+  !graph <-
+    fromJust . Acyclic.toAcyclic . Cyclic.connects <$> forM deps \(Version name versionConstraint) -> do
+      depPkg <- resolvePackage name lts versionConstraint False [thisPkg] env
+      fetchPackageTo (Cyclic.edge thisPkg depPkg) lts ltsDir (riftCache env </> "extra-deps") False env depPkg
 
-fetchExtraDependencies :: (MonadIO m, MonadHttp m, MonadMask m) => Environment -> [ExtraPackage] -> m (Map FilePath ProjectType)
-fetchExtraDependencies _ [] = pure mempty
-fetchExtraDependencies env (ExtraPkg name version dep : deps) = do
-  done <- fetchExtraDependencies env deps
+  -- now that we have the dependency graph, topsort it
+  -- NOTE: if a /dependency/ is an executable, abort
+  let sorted = reverse $ Acyclic.topSort graph
 
-  let srcPath = sourcePath (riftCache env </> "extra-deps") dep
-  (path, project, _) <- downloadAndExtract srcPath dep env
+  liftIO $ print sorted
 
-  insertExtraDependency name version path dep env
+  -- the topsort gives us the order in which to build dependencies (our package should come last)
+  -- however its order may need to be reversed
 
-  pure (Map.insert path project done)
-
-checkUnresolvedDependencies :: (MonadIO m) => Map FilePath ProjectType -> [Text] -> [Text] -> m ([Text], [Text])
-checkUnresolvedDependencies _ _ [] = pure ([], [])
-
-------------------------------
-
-findElem :: (a -> Bool) -> [a] -> Maybe (a, [a])
-findElem p = find' id
-  where
-    find' _ [] = Nothing
-    find' prefix (x : xs)
-      | p x = Just (x, prefix xs)
-      | otherwise = find' (prefix . (x :)) xs
+  --
+  pure ()

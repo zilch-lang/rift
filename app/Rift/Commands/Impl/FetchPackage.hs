@@ -18,4 +18,4 @@ fetchPackageCommand :: (MonadIO m, MonadHttp m, MonadMask m) => Text -> Maybe Te
 fetchPackageCommand name versionConstraint ltsName force env = do
   let lts = fromMaybe Unstable (ltsName >>= readLTSVersion)
   constr <- fromMaybe trueConstraint <$> traverse parseVersionConstraint versionConstraint
-  void $ resolvePackage name lts constr force env
+  void $ resolvePackage name lts constr force [] env

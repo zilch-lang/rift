@@ -2,6 +2,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 module Rift.Commands.Impl.UpdatePackageSet (updatePackageSetCommand) where
 
@@ -14,10 +15,12 @@ import Data.List (isPrefixOf)
 import Data.Maybe (fromJust)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
-import Dhall (auto, inputFile)
+import Dhall (Encoder (embed), auto, inject, inputFile)
+import qualified Dhall.Core as Dhall (pretty)
 import Rift.Commands.Impl.Utils.DhallHash (dhallHash)
 import Rift.Commands.Impl.Utils.Directory (copyDirectoryRecursive)
 import Rift.Commands.Impl.Utils.GitTags (fetchAllTags)
+import Rift.Commands.Impl.Utils.Paths (setDhallPath)
 import Rift.Config.PackageSet (Snapshot, ltsOf)
 import Rift.Environment (Environment (..))
 import Rift.Internal.Exceptions (RiftException (..))
@@ -86,7 +89,7 @@ updatePackageSetCommand Env {..} = do
 
   flip finally (backToUnstable git pkgsHome) $ forM_ tags \tag -> do
     liftIO $ withLockFile (riftHome </> "package-set.lock") do
-      Logger.debug $ "Updating hash for tag '" <> tag <> "'..."
+      Logger.info $ "Updating snapshot of LTS " <> tag <> "..."
 
       (exit, out, err) <- procStrictWithErr (Text.pack git) ["-C", Text.pack pkgsHome, "checkout", tag, "--force", "--detach"] empty
       unless (exit == ExitSuccess) do
@@ -106,8 +109,12 @@ updatePackageSetCommand Env {..} = do
 
       copyDirectoryRecursive pkgsHome (ltsDir </> "lts") \path -> not (isPrefixOf "." $ takeFileName path)
 
-      -- we may want to precompile the package set (meaning evaluate 'ltsDir </> "lts" </> "packages" </> "set" <.> "dhall"' and dump it back)
-      -- this way, all the URLs etc are resolved once and never again
+      -- precompile the LTS package set in order to resolve all links only once instead of each time parsing it
+      -- this will speed up future lookups
+      let setDhall = setDhallPath (ltsDir </> "lts")
+      Logger.info $ "Precompiling snapshot of LTS " <> tag <> " (this may take a while)..."
+      snapshot <- liftIO (inputFile auto setDhall :: IO Snapshot)
+      Text.writeFile setDhall (Dhall.pretty $ Dhall.embed Dhall.inject snapshot)
 
       pure ()
 

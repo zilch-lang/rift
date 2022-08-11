@@ -15,7 +15,7 @@ import Data.Hashable (Hashable (..))
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Void (Void)
-import Dhall (inputFile)
+import Dhall (Natural, inputFile)
 import Dhall.Import (Imported (Imported))
 import Dhall.Marshal.Decode (FromDhall (..), auto, constructor, field, natural, record, union, unit)
 import Dhall.Marshal.Encode (ToDhall (..), encodeConstructor, encodeConstructorWith, encodeField, recordEncoder, unionEncoder, (>$<), (>*<), (>|<))
@@ -75,7 +75,7 @@ instance ToDhall LTSVersion where
       stableField = recordEncoder $ id >$< encodeField "major" >*< encodeField "minor"
 
       adapt Unstable = Left ()
-      adapt (LTS major minor) = Right (major, minor)
+      adapt (LTS major minor) = Right (fromIntegral @_ @Natural major, fromIntegral @_ @Natural minor)
 
 instance FromDhall Snapshot where
   autoWith _ =
@@ -84,6 +84,14 @@ instance FromDhall Snapshot where
         <$> field "name" auto
         <*> field "gzc-version" auto
         <*> field "package-set" auto
+
+instance ToDhall Snapshot where
+  injectWith _ =
+    recordEncoder $
+      adapt
+        >$< encodeField "name" >*< encodeField "gzc-version" >*< encodeField "package-set"
+    where
+      adapt (Snapshot name gzc packages) = (name, (gzc, packages))
 
 -- | Read an LTS version which is either @unstable@ or of the form @lts-<major>.<minor>@.
 readLTSVersion :: Text -> Maybe LTSVersion

@@ -32,4 +32,4 @@ purgeAllOldLTS env = do
 
   pure ()
   where
-    removeStaticDirs = flip (\\) ["hashes", "pkgs", "extra-deps"]
+    removeStaticDirs = (\\ ["hashes", "pkgs", "extra-deps"])

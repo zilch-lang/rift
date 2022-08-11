@@ -1,10 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 module Rift.Config.Package where
 
 import Data.Function (on)
 import Data.Text (Text)
 import Dhall.Marshal.Decode (FromDhall (..), auto, field, record)
+import Dhall.Marshal.Encode (ToDhall (..), encodeField, recordEncoder, (>$<), (>*<))
 import Rift.Config.Source (Source)
 import Rift.Config.Version (SemVer)
 
@@ -41,6 +43,19 @@ instance FromDhall Package where
         <*> field "maintainers" auto
         <*> field "broken" auto
         <*> field "deprecated" auto
+
+instance ToDhall Package where
+  injectWith _ =
+    recordEncoder $
+      adapt
+        >$< encodeField "name"
+        >*< encodeField "version"
+        >*< encodeField "src"
+        >*< encodeField "maintainers"
+        >*< encodeField "broken"
+        >*< encodeField "deprecated"
+    where
+      adapt (Pkg name version src maintainers broken deprecated) = (name, (version, (src, (maintainers, (broken, deprecated)))))
 
 instance FromDhall ExtraPackage where
   autoWith _ =

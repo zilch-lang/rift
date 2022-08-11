@@ -113,7 +113,7 @@ buildComponent lts ltsDir snapshot dryRun dirtyFiles env name (ComponentType ver
   !graph <-
     fromJust . Acyclic.toAcyclic . Cyclic.connects <$> forM deps \(Version name versionConstraint) -> do
       depPkg <- resolvePackage name lts versionConstraint False [thisPkg] env
-      fetchPackageTo (Cyclic.edge thisPkg depPkg) lts ltsDir (riftCache env </> "extra-deps") False False env depPkg
+      fetchPackageTo (Cyclic.edge thisPkg depPkg) lts (ltsDir </> "sources") (riftCache env </> "extra-deps") False False env depPkg
 
   -- now that we have the dependency graph, topsort it
   -- NOTE: if a /dependency/ is an executable, abort

@@ -23,6 +23,5 @@ fetchPackageCommand name versionConstraint ltsName force env = do
   pkg <- resolvePackage name lts constr force [] env
 
   ltsDir <- fromJust <$> ltsPath (riftCache env) lts
-  let extraDepDir = riftCache env </> "extra-deps"
 
-  void $ fetchPackageTo' lts ltsDir extraDepDir force True env pkg
+  void $ fetchPackageTo' lts (ltsDir </> "sources") (riftCache env </> "extra-deps") force True env pkg

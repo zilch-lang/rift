@@ -106,6 +106,11 @@ updatePackageSetCommand Env {..} = do
 
       copyDirectoryRecursive pkgsHome (ltsDir </> "lts") \path -> not (isPrefixOf "." $ takeFileName path)
 
+      -- we may want to precompile the package set (meaning evaluate 'ltsDir </> "lts" </> "packages" </> "set" <.> "dhall"' and dump it back)
+      -- this way, all the URLs etc are resolved once and never again
+
+      pure ()
+
 backToUnstable :: (MonadIO m) => FilePath -> FilePath -> m ()
 backToUnstable git pkgsHome = do
   (exit, out, err) <- liftIO $ procStrictWithErr (Text.pack git) ["-C", Text.pack pkgsHome, "checkout", "unstable", "--force"] empty

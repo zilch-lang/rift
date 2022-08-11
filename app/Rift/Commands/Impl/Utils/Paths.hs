@@ -58,3 +58,6 @@ ltsPath relativeTo lts = do
 
 extraCachePath :: FilePath -> FilePath
 extraCachePath base = base </> "extra-deps" </> "hashes" <.> "cache"
+
+dotRift :: FilePath -> FilePath
+dotRift path = path </> ".rift"

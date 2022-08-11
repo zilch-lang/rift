@@ -130,14 +130,14 @@ resolvePackage name lts (constraintExpr, versionConstraint) force extra env = do
 
                 pure (head candidates3)
 
-fetchPackageTo' :: (MonadIO m, MonadHttp m, MonadMask m) => LTSVersion -> FilePath -> FilePath -> Bool -> Environment -> Package -> m (Acyclic.AdjacencyMap Package)
-fetchPackageTo' lts ltsDir extraDepDir force env pkg =
-  Acyclic.toAcyclic <$> fetchPackageTo Cyclic.empty lts ltsDir extraDepDir force env pkg >>= \case
+fetchPackageTo' :: (MonadIO m, MonadHttp m, MonadMask m) => LTSVersion -> FilePath -> FilePath -> Bool -> Bool -> Environment -> Package -> m (Acyclic.AdjacencyMap Package)
+fetchPackageTo' lts ltsDir extraDepDir force infoCached env pkg =
+  Acyclic.toAcyclic <$> fetchPackageTo Cyclic.empty lts ltsDir extraDepDir force infoCached env pkg >>= \case
     Just graph -> pure graph
     Nothing -> undefined
 
-fetchPackageTo :: (MonadIO m, MonadHttp m, MonadMask m) => Cyclic.AdjacencyMap Package -> LTSVersion -> FilePath -> FilePath -> Bool -> Environment -> Package -> m (Cyclic.AdjacencyMap Package)
-fetchPackageTo depGraph lts ltsDir extraDepDir force env pkg@Pkg {..} = do
+fetchPackageTo :: (MonadIO m, MonadHttp m, MonadMask m) => Cyclic.AdjacencyMap Package -> LTSVersion -> FilePath -> FilePath -> Bool -> Bool -> Environment -> Package -> m (Cyclic.AdjacencyMap Package)
+fetchPackageTo depGraph lts ltsDir extraDepDir force infoCached env pkg@Pkg {..} = do
   checkCycles pkg depGraph
 
   let pkgDir = packagePath pkg ltsDir
@@ -148,7 +148,8 @@ fetchPackageTo depGraph lts ltsDir extraDepDir force env pkg@Pkg {..} = do
       then do
         case src of
           Directory _ -> pure ()
-          _ -> Logger.info $ "Package '" <> name <> "' is already cached.\nUse --force to redownload it."
+          _ | infoCached -> Logger.info $ "Package '" <> name <> "' is already cached.\nUse --force to redownload it."
+          _ -> pure ()
 
         project <- liftIO $ readPackageDhall pkgDir
         configuration <- liftIO $ inputFile auto (pkgDir </> riftDhall)
@@ -179,7 +180,7 @@ fetchPackageTo depGraph lts ltsDir extraDepDir force env pkg@Pkg {..} = do
     resolveDep :: (MonadIO m, MonadHttp m, MonadMask m) => Package -> LTSVersion -> FilePath -> FilePath -> Bool -> Environment -> PackageDependency -> Cyclic.AdjacencyMap Package -> m (Cyclic.AdjacencyMap Package)
     resolveDep thisPkg lts ltsDir extraDepDir force env (Version name constraint) depGraph = do
       pkg <- resolvePackage name lts constraint force [] env
-      fetchPackageTo (depGraph `Cyclic.overlay` Cyclic.edge thisPkg pkg) lts ltsDir extraDepDir force env pkg
+      fetchPackageTo (depGraph `Cyclic.overlay` Cyclic.edge thisPkg pkg) lts ltsDir extraDepDir force infoCached env pkg
     {-# INLINE resolveDep #-}
 
     checkCycles pkg depGraph = dfs [pkg] pkg depGraph

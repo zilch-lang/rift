@@ -27,8 +27,7 @@ import Rift.Config.Template
 import Rift.Environment (Environment (..))
 import Rift.Internal.Exceptions (RiftException (..))
 import qualified Rift.Logger as Logger
-import System.Directory (createDirectory, createDirectoryIfMissing, doesDirectoryExist, listDirectory)
-import System.Exit (exitFailure)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory)
 import System.FilePath ((<.>), (</>))
 import Text.RawString.QQ (r)
 import Turtle (ExitCode (..), empty, procStrictWithErr)
@@ -37,12 +36,8 @@ newProjectCommand :: (MonadIO m) => FilePath -> Maybe Text -> Maybe Text -> Bool
 newProjectCommand path name template force Env {..} = do
   unlessM (liftIO $ doesDirectoryExist path) do
     liftIO $ throwIO (CannotCreateProjectInNonDirectory path)
-  -- Logger.error $ "Cannot create project in path '" <> Text.pack path <> "' because it is not a directory."
-  -- liftIO exitFailure
   whenM ((&& not force) . not <$> isDirectoryEmpty path) do
     liftIO $ throwIO CannotCreateProjectInNonEmptyDirectory
-  -- Logger.error "Cannot create project in a non-empty directory, unless '--force' is used."
-  -- liftIO exitFailure
 
   let projectName = fromMaybe "<my-project>" name
       projectTemplate = resolveTemplate (fromMaybe "executable" template)
@@ -58,12 +53,7 @@ newProjectCommand path name template force Env {..} = do
 
   (exit, out, err) <- procStrictWithErr (Text.pack git) ["tag", "-l", "-n", "1", "--color", "never"] empty
   unless (exit == ExitSuccess) do
-    Logger.error $
-      "'git' process returned non 0 exit code.\n* Standard output:\n"
-        <> Text.unlines (mappend "> " <$> Text.lines out)
-        <> "\n* Standard error:\n"
-        <> Text.unlines (mappend "> " <$> Text.lines err)
-    liftIO exitFailure
+    liftIO $ throwIO $ ExternalCommandError "'git' process returned non 0 exit code." out err
 
   let allLTSs = reverse $ List.sort $ catMaybes $ readLTSVersion <$> Text.lines out
   lastLTS <- case allLTSs of

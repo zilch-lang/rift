@@ -6,6 +6,7 @@ import Control.Exception (Exception)
 import Data.Foldable (foldl')
 import Data.Text (Text)
 import qualified Data.Text as Text
+import Rift.Commands.Impl.Utils.Paths (projectDhall)
 import Rift.Config.Package (Package (name, src))
 import Rift.Config.PackageSet (LTSVersion)
 import Rift.Config.Source (Source (..), prettyLocation, prettySource)
@@ -44,6 +45,14 @@ data RiftException
   | Sha256ValidationError
       Text
       Text
+      Text
+  | ExternalCommandError
+      Text
+      Text
+      Text
+  | NotInARiftProject
+      FilePath
+  | RequestUriIsNotHttpOrHttps
       Text
 
 instance Show RiftException where
@@ -97,6 +106,16 @@ instance Show RiftException where
       show' (Git loc _) = (".git repository", loc)
       show' (Directory loc) = ("directory", loc)
   show (Sha256ValidationError url expected actual) =
-    "Failure validating source '" <> Text.unpack url <> "':\n- Expected SHA256: " <> Text.unpack expected <> "\n-Got SHA256: " <> Text.unpack actual
+    "Failure validating source '" <> Text.unpack url <> "':\n- Expected SHA256: " <> Text.unpack expected <> "\n- Got SHA256: " <> Text.unpack actual
+  show (ExternalCommandError header out err) =
+    Text.unpack header
+      <> "\n- Standard output:\n"
+      <> unlines (mappend ">> " . Text.unpack <$> Text.lines out)
+      <> "\n- Standard error:\n"
+      <> unlines (mappend ">> " . Text.unpack <$> Text.lines err)
+  show (NotInARiftProject path) =
+    "The downloaded project (at " <> path <> ") does not appear to be a Rift project.\nReason: The file '" <> projectDhall <> "' is not present."
+  show (RequestUriIsNotHttpOrHttps uri) =
+    "URIs with non-HTTP(S) schemes are not supported (while trying to fetch file '" <> Text.unpack uri <> "')."
 
 instance Exception RiftException

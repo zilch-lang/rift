@@ -11,7 +11,7 @@
 
 module Rift.Commands.Impl.SearchPackage (searchPackageCommand) where
 
-import Control.Exception (finally)
+import Control.Exception (finally, throwIO)
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Bifunctor (bimap, first)
@@ -21,26 +21,24 @@ import qualified Data.HashMap.Strict as HashMap
 import Data.List (sortBy)
 import qualified Data.List as List
 import qualified Data.Map as Map
-import Data.Maybe (fromMaybe, isNothing, mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import qualified Data.MultiMap as MultiMap
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
-import Dhall (auto, inputFile)
 import Rift.Commands.Impl.Utils.ExtraDependencyCacheManager (readExtraCache)
 import Rift.Commands.Impl.Utils.GitTags (fetchAllTags)
-import Rift.Commands.Impl.Utils.Paths (extraCachePath, ltsPath, packagePath, projectDhall)
+import Rift.Commands.Impl.Utils.Paths (extraCachePath, ltsPath, packagePath)
 import Rift.Config.ExtraDependencyCache (ExtraCache (..))
 import Rift.Config.Package (Package (..))
 import Rift.Config.PackageSet
-import Rift.Config.Project (ComponentType (..), ProjectType)
 import Rift.Config.Source (prettySource)
 import Rift.Environment (Environment (..))
+import Rift.Internal.Exceptions (RiftException (..))
 import Rift.Internal.LockFile (withLockFile)
 import qualified Rift.Logger as Logger
 import qualified System.Console.ANSI as ANSI
 import System.Directory (doesDirectoryExist)
-import System.Exit (exitFailure)
 import System.FilePath ((<.>), (</>))
 import System.IO (stdout)
 import Turtle (ExitCode (..), empty, procStrictWithErr)
@@ -55,13 +53,7 @@ searchPackageCommand pkgName env@Env {..} = do
     let restoreToUnstable = do
           (exit, out, err) <- procStrictWithErr (Text.pack git) ["-C", Text.pack pkgsHome, "checkout", "unstable"] empty
           unless (exit == ExitSuccess) do
-            Logger.error $
-              "Failed to restore the package set to a correct state.\nPlease delete the directory '" <> Text.pack pkgsHome <> "' and run the command 'rift package update'."
-                <> "\n* Standard output:\n"
-                <> Text.unlines (mappend "> " <$> Text.lines out)
-                <> "\n* Standard error:\n"
-                <> Text.unlines (mappend "> " <$> Text.lines err)
-            exitFailure
+            liftIO $ throwIO $ ExternalCommandError ("Failed to restore the package set to a correct state.\nPlease delete the directory '" <> Text.pack pkgsHome <> "' and run the command 'rift package update'.") out err
 
     allVersionsInAllLTSs <- (HashMap.toList <$> queryAllTagsForPackage env (allTags <> ["unstable"])) `finally` restoreToUnstable
     let sortedPackagesOnLTS = (first readLTSVersion <$> allVersionsInAllLTSs) & mapMaybe (\(m, x) -> (,x) <$> m) & List.sort

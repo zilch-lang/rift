@@ -41,6 +41,7 @@ sourcePath relativeTo src = relativeTo </> hash' src
     hash' (Tar _ sha256) = "tar-" <> Text.unpack sha256
     hash' (TarGz _ sha256) = "targz-" <> Text.unpack sha256
     hash' (Zip _ sha256) = "zip-" <> Text.unpack sha256
+    hash' _ = undefined
 
 -- | Compute the effective path of a LTS.
 ltsPath :: (MonadIO m) => FilePath -> LTSVersion -> m (Maybe FilePath)

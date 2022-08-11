@@ -5,6 +5,7 @@
 
 module Rift.Commands.Impl.UpdatePackageSet (updatePackageSetCommand) where
 
+import Control.Exception (throwIO)
 import Control.Monad (forM_, unless)
 import Control.Monad.Catch (MonadMask, finally)
 import Control.Monad.Extra (unlessM)
@@ -19,9 +20,10 @@ import Rift.Commands.Impl.Utils.Directory (copyDirectoryRecursive)
 import Rift.Commands.Impl.Utils.GitTags (fetchAllTags)
 import Rift.Config.PackageSet (Snapshot, ltsOf)
 import Rift.Environment (Environment (..))
+import Rift.Internal.Exceptions (RiftException (..))
 import Rift.Internal.LockFile (withLockFile)
 import qualified Rift.Logger as Logger
-import System.Directory (createDirectory, createDirectoryIfMissing, doesDirectoryExist, doesPathExist, removePathForcibly)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesPathExist, removePathForcibly)
 import System.Exit (exitFailure)
 import System.FilePath (takeFileName, (<.>), (</>))
 import Turtle (ExitCode (..), empty, procStrictWithErr)
@@ -66,12 +68,7 @@ updatePackageSetCommand Env {..} = do
 
         (exit, out, err) <- procStrictWithErr (Text.pack git) ["-C", Text.pack pkgsHome, "pull", "--rebase", "--all", "--tags"] empty
         unless (exit == ExitSuccess) do
-          Logger.error $
-            "Could not update the package set due to a git error.\n* Standard output:\n"
-              <> Text.unlines (mappend "> " <$> Text.lines out)
-              <> "\n* Standard error:\n"
-              <> Text.unlines (mappend "> " <$> Text.lines err)
-          exitFailure
+          liftIO $ throwIO $ ExternalCommandError "Could not update the package set due to a git error." out err
         Logger.info "Successfully updated the package set!"
     else do
       liftIO $ withLockFile (riftHome </> "package-set.lock") do
@@ -80,12 +77,7 @@ updatePackageSetCommand Env {..} = do
 
         (exit, out, err) <- procStrictWithErr (Text.pack git) ["clone", "https://github.com/zilch-lang/pkgs", Text.pack pkgsHome] empty
         unless (exit == ExitSuccess) do
-          Logger.error $
-            "Failed to clone package set to destination '" <> Text.pack pkgsHome <> "'.\n* Standard output:\n"
-              <> Text.unlines (mappend "> " <$> Text.lines out)
-              <> "\n* Standard error:\n"
-              <> Text.unlines (mappend "> " <$> Text.lines err)
-          exitFailure
+          liftIO $ throwIO $ ExternalCommandError ("Failed to clone package set to destination '" <> Text.pack pkgsHome <> "'.") out err
 
         Logger.info "Package set initialized!"
 
@@ -98,12 +90,7 @@ updatePackageSetCommand Env {..} = do
 
       (exit, out, err) <- procStrictWithErr (Text.pack git) ["-C", Text.pack pkgsHome, "checkout", tag, "--force", "--detach"] empty
       unless (exit == ExitSuccess) do
-        Logger.error $
-          "Could not update the package set due to a git error.\n* Standard output:\n"
-            <> Text.unlines (mappend "> " <$> Text.lines out)
-            <> "\n* Standard error:\n"
-            <> Text.unlines (mappend "> " <$> Text.lines err)
-        exitFailure
+        liftIO $ throwIO $ ExternalCommandError "Could not update the package set due to a git error." out err
 
       let snapshotPath = pkgsHome </> "packages" </> "set" <.> "dhall"
       setDhallHash <- fromJust . Text.stripPrefix "sha256:" <$> dhallHash snapshotPath
@@ -123,9 +110,4 @@ backToUnstable :: (MonadIO m) => FilePath -> FilePath -> m ()
 backToUnstable git pkgsHome = do
   (exit, out, err) <- liftIO $ procStrictWithErr (Text.pack git) ["-C", Text.pack pkgsHome, "checkout", "unstable", "--force"] empty
   unless (exit == ExitSuccess) do
-    Logger.error $
-      "Could not update the package set due to a git error.\n* Standard output:\n"
-        <> Text.unlines (mappend "> " <$> Text.lines out)
-        <> "\n* Standard error:\n"
-        <> Text.unlines (mappend "> " <$> Text.lines err)
-    liftIO exitFailure
+    liftIO $ throwIO $ ExternalCommandError "Could not update the package set due to a git error." out err

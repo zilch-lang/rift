@@ -21,9 +21,9 @@ import Control.Monad.Extra (unlessM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Crypto.Hash (Digest, SHA256, hash)
 import qualified Data.ByteString.Lazy as LBS
-import Data.Foldable (foldl', foldrM)
+import Data.Foldable (foldrM)
 import Data.Function (on)
-import Data.List (find, sortBy)
+import Data.List (sortBy)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (fromMaybe)
@@ -41,8 +41,8 @@ import Rift.Config.Configuration (Configuration (..))
 import Rift.Config.Package (ExtraPackage (..), Package (..))
 import Rift.Config.PackageSet (LTSVersion, Snapshot (..))
 import Rift.Config.Project (ComponentType (..), ProjectType)
-import Rift.Config.Source (Location (..), Source (..), prettySource)
-import Rift.Config.Version (ConstraintExpr, PackageDependency (..), SemVer, VersionConstraint, trueConstraint)
+import Rift.Config.Source (Location (..), Source (..))
+import Rift.Config.Version (PackageDependency (..), SemVer, VersionConstraint)
 import Rift.Environment.Def (Environment (..))
 import Rift.Internal.Exceptions (RiftException (..))
 import qualified Rift.Logger as Logger
@@ -53,14 +53,12 @@ import System.IO.Temp (withSystemTempDirectory)
 import qualified Text.URI as URI
 import Turtle (empty, procStrictWithErr)
 
-resolvePackage :: (MonadIO m, MonadHttp m, MonadMask m) => Text -> LTSVersion -> VersionConstraint -> Bool -> [Package] -> Environment -> m Package
-resolvePackage name lts (constraintExpr, versionConstraint) force extra env = do
+resolvePackage :: (MonadIO m, MonadHttp m, MonadMask m) => Text -> LTSVersion -> VersionConstraint -> [Package] -> Environment -> m (FilePath, Package)
+resolvePackage name lts (constraintExpr, versionConstraint) extra env = do
   ltsDir <- ltsPath (riftCache env) lts
 
   case ltsDir of
-    Nothing -> do
-      Logger.error $ "LTS '" <> Text.pack (show lts) <> "' not found in global cache.\nPerhaps you want to run 'rift package update'?"
-      liftIO exitFailure
+    Nothing -> liftIO $ throwIO $ LTSNotFound lts
     Just ltsDir -> do
       Snapshot _ _ packageSet <- liftIO (inputFile auto (ltsDir </> "lts" </> "packages" </> "set" <.> "dhall") :: IO Snapshot)
       let packages = filter (\(Pkg n _ _ _ _ _) -> n == name) (extra <> packageSet)
@@ -69,9 +67,7 @@ resolvePackage name lts (constraintExpr, versionConstraint) force extra env = do
         [] -> do
           liftIO $ throwIO $ NoSuchPackage name lts
         ps -> case filter (versionConstraint . version) ps of
-          [] -> do
-            let v1 = version $ head ps
-            liftIO $ throwIO $ BrokenVersionConstraint name constraintExpr
+          [] -> liftIO $ throwIO $ BrokenVersionConstraint name constraintExpr
           ps@(p : _) -> do
             let candidates = filter ((==) (version p) . version) ps
 
@@ -90,7 +86,9 @@ resolvePackage name lts (constraintExpr, versionConstraint) force extra env = do
                 when (length candidates2 > 1) do
                   liftIO $ throwIO $ AmbiguousPackageSources name (version p) candidates2
 
-                pure (head candidates2)
+                let pkg = head candidates2
+                    pkgPath = packagePath pkg (ltsDir </> "sources")
+                pure (pkgPath, pkg)
               else do
                 when (length candidates3 /= length candidates2) do
                   Logger.warn $ "Ignoring deprecated sources for the package '" <> name <> "'"
@@ -98,20 +96,22 @@ resolvePackage name lts (constraintExpr, versionConstraint) force extra env = do
                 when (length candidates3 > 1) do
                   liftIO $ throwIO $ AmbiguousPackageSources name (version p) candidates3
 
-                pure (head candidates3)
+                let pkg = head candidates3
+                    pkgPath = packagePath pkg (ltsDir </> "sources")
+                pure (pkgPath, pkg)
 
-fetchPackageTo' :: (MonadIO m, MonadHttp m, MonadMask m) => LTSVersion -> FilePath -> FilePath -> Bool -> Bool -> Environment -> Package -> m (Acyclic.AdjacencyMap Package)
-fetchPackageTo' lts ltsDir extraDepDir force infoCached env pkg =
-  Acyclic.toAcyclic <$> fetchPackageTo Cyclic.empty lts ltsDir extraDepDir force infoCached env pkg >>= \case
+fetchPackageTo' :: (MonadIO m, MonadHttp m, MonadMask m) => LTSVersion -> FilePath -> FilePath -> Bool -> Bool -> Environment -> FilePath -> Package -> m (Acyclic.AdjacencyMap (FilePath, Package))
+fetchPackageTo' lts ltsDir extraDepDir force infoCached env pkgPath pkg =
+  Acyclic.toAcyclic <$> fetchPackageTo Cyclic.empty lts ltsDir extraDepDir force infoCached env pkgPath pkg >>= \case
     Just graph -> pure graph
     Nothing -> undefined
 
-fetchPackageTo :: (MonadIO m, MonadHttp m, MonadMask m) => Cyclic.AdjacencyMap Package -> LTSVersion -> FilePath -> FilePath -> Bool -> Bool -> Environment -> Package -> m (Cyclic.AdjacencyMap Package)
-fetchPackageTo depGraph lts ltsDir extraDepDir force infoCached env pkg@Pkg {..} = do
-  checkCycles pkg depGraph
+fetchPackageTo :: (MonadIO m, MonadHttp m, MonadMask m) => Cyclic.AdjacencyMap (FilePath, Package) -> LTSVersion -> FilePath -> FilePath -> Bool -> Bool -> Environment -> FilePath -> Package -> m (Cyclic.AdjacencyMap (FilePath, Package))
+fetchPackageTo depGraph lts ltsDir extraDepDir force infoCached env pkgPath pkg@Pkg {..} = do
+  checkCycles (pkgPath, pkg) depGraph
 
   let pkgDir = packagePath pkg ltsDir
-  (graph', _, components, configuration) <- do
+  (graph', _, components, _) <- do
     pathExists <- liftIO $ doesDirectoryExist pkgDir
 
     if not force && pathExists
@@ -139,7 +139,7 @@ fetchPackageTo depGraph lts ltsDir extraDepDir force infoCached env pkg@Pkg {..}
             insertExtraDependency name version srcPath source env
 
         -- - fetch dependencies
-        graph' <- foldrM (resolveDep pkg lts ltsDir extraDepDir force env) depGraph deps
+        graph' <- foldrM (resolveDep (pkgDir, pkg) lts ltsDir extraDepDir force env) depGraph deps
 
         pure (graph', pkgDir, project, configuration)
 
@@ -147,19 +147,20 @@ fetchPackageTo depGraph lts ltsDir extraDepDir force infoCached env pkg@Pkg {..}
 
   pure graph'
   where
-    resolveDep :: (MonadIO m, MonadHttp m, MonadMask m) => Package -> LTSVersion -> FilePath -> FilePath -> Bool -> Environment -> PackageDependency -> Cyclic.AdjacencyMap Package -> m (Cyclic.AdjacencyMap Package)
+    resolveDep :: (MonadIO m, MonadHttp m, MonadMask m) => (FilePath, Package) -> LTSVersion -> FilePath -> FilePath -> Bool -> Environment -> PackageDependency -> Cyclic.AdjacencyMap (FilePath, Package) -> m (Cyclic.AdjacencyMap (FilePath, Package))
     resolveDep thisPkg lts ltsDir extraDepDir force env (Version name constraint) depGraph = do
-      pkg <- resolvePackage name lts constraint force [] env
-      fetchPackageTo (depGraph `Cyclic.overlay` Cyclic.edge thisPkg pkg) lts ltsDir extraDepDir force infoCached env pkg
+      (pkgPath, pkg) <- resolvePackage name lts constraint [] env
+      fetchPackageTo (depGraph `Cyclic.overlay` Cyclic.edge thisPkg (pkgPath, pkg)) lts ltsDir extraDepDir force infoCached env pkgPath pkg
     {-# INLINE resolveDep #-}
 
-    checkCycles pkg depGraph = dfs [pkg] pkg depGraph
+    checkCycles :: (MonadIO m) => (FilePath, Package) -> Cyclic.AdjacencyMap (FilePath, Package) -> m ()
+    checkCycles pkg'@(_, pkg) depGraph = dfs [pkg] pkg' depGraph
 
     dfs stack root graph =
-      forM_ (Cyclic.postSet root graph) \pkg -> do
+      forM_ (Cyclic.postSet root graph) \node@(_, pkg) -> do
         when (pkg `elem` stack) do
           liftIO $ throwIO $ DependencyCycle (reverse $ pkg : stack)
-        dfs (pkg : stack) pkg graph
+        dfs (pkg : stack) node graph
 
 checkConsistency :: (MonadIO m) => Text -> SemVer -> Map Text ComponentType -> m ()
 checkConsistency name ver cs = case Map.lookup name cs of
@@ -197,34 +198,18 @@ downloadAndExtract dir dep env =
         let gitexe = Text.pack $ git env
         (exit, out, err) <- procStrictWithErr (Text.pack $ git env) ["-C", Text.pack dir, "clone", url, "."] empty
         unless (exit == ExitSuccess) do
-          Logger.error $
-            "Could not fetch git repository at '" <> url <> "'.\n* Standard output:\n"
-              <> Text.unlines (mappend "> " <$> Text.lines out)
-              <> "\n* Standard error:\n"
-              <> Text.unlines (mappend "> " <$> Text.lines err)
-          exitFailure
+          liftIO $ throwIO $ ExternalCommandError ("Could not fetch git repository at '" <> url <> "'.") out err
         (exit, out, err) <- procStrictWithErr gitexe ["-C", Text.pack dir, "checkout", rev] empty
         unless (exit == ExitSuccess) do
-          Logger.error $
-            "Could not fetch git repository at '" <> url <> "'.\n* Standard output:\n"
-              <> Text.unlines (mappend "> " <$> Text.lines out)
-              <> "\n* Standard error:\n"
-              <> Text.unlines (mappend "> " <$> Text.lines err)
-          exitFailure
+          liftIO $ throwIO $ ExternalCommandError ("Could not fetch git repository at '" <> url <> "'.") out err
         (exit, out, err) <- procStrictWithErr gitexe ["-C", Text.pack dir, "reset", "--hard"] mempty
         unless (exit == ExitSuccess) do
-          Logger.error $
-            "Could not fetch git repository at '" <> url <> "'.\n* Standard output:\n"
-              <> Text.unlines (mappend "> " <$> Text.lines out)
-              <> "\n* Standard error:\n"
-              <> Text.unlines (mappend "> " <$> Text.lines err)
-          exitFailure
+          liftIO $ throwIO $ ExternalCommandError ("Could not fetch git repository at '" <> url <> "'.") out err
 
         removeDirectoryRecursive (dir </> ".git")
 
         unlessM (liftIO . doesFileExist $ dir </> projectDhall) do
-          Logger.error $ "Zipped file '" <> url <> "' does not contain a Rift project (file '" <> Text.pack projectDhall <> "' not present)"
-          liftIO exitFailure
+          liftIO $ throwIO $ NotInARiftProject dir
 
         liftIO $ copyDirectoryRecursive dir path (const True)
 
@@ -240,9 +225,7 @@ downloadAndExtract dir dep env =
       !(resp, _ :: Integer) <- do
         uri <- URI.mkURI url
         response <- case useURI uri of
-          Nothing -> do
-            Logger.error $ "URI '" <> url <> "' does not seem to be either HTTP or HTTPS"
-            liftIO exitFailure
+          Nothing -> liftIO $ throwIO $ RequestUriIsNotHttpOrHttps url
           Just (Left (url', options)) -> req GET url' NoReqBody lbsResponse options
           Just (Right (url', options)) -> req GET url' NoReqBody lbsResponse options
         pure (responseBody response, either (const 0) fst . decimal . decodeUtf8 . fromMaybe "0" $ responseHeader response "Content-Length")
@@ -252,7 +235,7 @@ downloadAndExtract dir dep env =
       when (hashed /= sha256) do
         liftIO $ throwIO $ Sha256ValidationError url sha256 hashed
 
-      withSystemTempDirectory "rift" \dir -> unpack path dir resp
+      void $ withSystemTempDirectory "rift" \dir -> unpack path dir resp
 
       project <- readPackageDhall path
       configuration <- liftIO $ inputFile auto (path </> riftDhall)
@@ -265,11 +248,9 @@ downloadAndExtract dir dep env =
     copyArchive url dir path kind [dir2] = do
       let dir' = dir </> dir2
       unlessM (liftIO . doesFileExist $ dir' </> projectDhall) do
-        Logger.error $ kind <> " file '" <> url <> "' does not contain a Rift project (file '" <> Text.pack projectDhall <> "' not present)"
-        liftIO exitFailure
+        liftIO $ throwIO $ NotInARiftProject dir'
       liftIO $ copyDirectoryRecursive dir' path (const True)
     copyArchive url dir path kind _ = do
       unlessM (liftIO . doesFileExist $ dir </> projectDhall) do
-        Logger.error $ kind <> " file '" <> url <> "' does not contain a Rift project (file '" <> Text.pack projectDhall <> "' not present)"
-        liftIO exitFailure
+        liftIO $ throwIO $ NotInARiftProject dir
       liftIO $ copyDirectoryRecursive dir path (const True)

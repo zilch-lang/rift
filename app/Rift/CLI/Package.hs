@@ -3,6 +3,7 @@ module Rift.CLI.Package (packageCLI) where
 import Data.Foldable (fold)
 import Options.Applicative
 import Rift.CLI.Package.Fetch (packageFetchCLI)
+import Rift.CLI.Package.PurgeLTS (packagePurgeLTSCLI)
 import Rift.CLI.Package.Search (packageSearchCLI)
 import Rift.CLI.Package.Update (packageUpdateCLI)
 import Rift.Commands (Command (..))
@@ -29,5 +30,6 @@ packageCLI =
       let cmd name parser = command name $ Package <$> parser
        in [ cmd "update" packageUpdateCLI,
             cmd "search" packageSearchCLI,
-            cmd "fetch" packageFetchCLI
+            cmd "fetch" packageFetchCLI,
+            cmd "purge-lts" packagePurgeLTSCLI
           ]

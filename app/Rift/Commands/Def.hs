@@ -16,6 +16,7 @@ import Rift.Commands.Impl.BuildProject (buildProjectCommand)
 import Rift.Commands.Impl.FetchPackage (fetchPackageCommand)
 import Rift.Commands.Impl.NewProject (newProjectCommand)
 import Rift.Commands.Impl.PrintPaths (printPaths)
+import Rift.Commands.Impl.PurgeLTS (purgeAllOldLTS)
 import Rift.Commands.Impl.QueryPaths (queryAndPrintPaths)
 import Rift.Commands.Impl.SearchPackage (searchPackageCommand)
 import Rift.Commands.Impl.UpdatePackageSet (updatePackageSetCommand)
@@ -44,6 +45,8 @@ data PkgCommand
       -- ^ The LTS where to get the package from (defaults to the latest if not specified).
       Bool
       -- ^ Whether to force redownloading/unpacking the package.
+  | -- | Remove old LTS generations from the cache.
+    PurgeLTS
 
 -- | A command acting on the current project.
 data ProjCommand
@@ -86,6 +89,7 @@ instance (MonadIO m, MonadHttp m, MonadMask m) => CommandExecutor PkgCommand m w
   executeCommand UpdatePackageSet e = updatePackageSetCommand e
   executeCommand (SearchPackage p) e = searchPackageCommand p e
   executeCommand (FetchPackage n c l f) e = fetchPackageCommand n c l f e
+  executeCommand PurgeLTS e = purgeAllOldLTS e
   executeCommand _ e = error "not yet implemented"
 
 instance (MonadIO m, MonadHttp m, MonadMask m) => CommandExecutor ProjCommand m where

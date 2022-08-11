@@ -30,6 +30,7 @@ executable rift
       Rift.CLI.Global
       Rift.CLI.Package
       Rift.CLI.Package.Fetch
+      Rift.CLI.Package.PurgeLTS
       Rift.CLI.Package.Search
       Rift.CLI.Package.Update
       Rift.CLI.Path
@@ -45,6 +46,7 @@ executable rift
       Rift.Commands.Impl.FetchPackage
       Rift.Commands.Impl.NewProject
       Rift.Commands.Impl.PrintPaths
+      Rift.Commands.Impl.PurgeLTS
       Rift.Commands.Impl.QueryPaths
       Rift.Commands.Impl.SearchPackage
       Rift.Commands.Impl.UpdatePackageSet

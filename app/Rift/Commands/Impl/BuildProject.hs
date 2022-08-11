@@ -9,10 +9,10 @@ module Rift.Commands.Impl.BuildProject where
 
 import qualified Algebra.Graph.Acyclic.AdjacencyMap as Acyclic
 import qualified Algebra.Graph.AdjacencyMap as Cyclic
-import Control.Monad (forM, forM_, void)
+import Control.Exception (throwIO)
+import Control.Monad (forM, void)
 import Control.Monad.Catch (MonadMask)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Functor ((<&>))
 import Data.List (nub)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -20,24 +20,22 @@ import Data.Maybe (fromJust)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
-import qualified Data.Text.IO as Text
 import Dhall (auto, inputFile)
 import Network.HTTP.Req (MonadHttp)
 import Rift.Commands.Impl.Utils.Config (readPackageDhall)
-import Rift.Commands.Impl.Utils.Download (downloadAndExtract, fetchPackageTo, resolvePackage)
-import Rift.Commands.Impl.Utils.ExtraDependencyCacheManager (insertExtraDependency)
-import Rift.Commands.Impl.Utils.Paths (ltsPath, projectDhall, riftDhall, sourcePath)
+import Rift.Commands.Impl.Utils.Download (fetchPackageTo, resolvePackage)
+import Rift.Commands.Impl.Utils.Paths (ltsPath, riftDhall)
 import Rift.Config.Configuration (Configuration (..))
-import Rift.Config.Package (ExtraPackage (..), Package (..))
+import Rift.Config.Package (Package (..))
 import Rift.Config.PackageSet (LTSVersion, Snapshot (..), snapshotFromDhallFile)
-import Rift.Config.Project (ComponentType (..), ProjectType)
+import Rift.Config.Project (ComponentType (..))
 import Rift.Config.Source (Location (Local), Source (Directory))
 import Rift.Config.Version (PackageDependency (..))
 import Rift.Environment (Environment, riftCache)
+import Rift.Internal.Exceptions (RiftException (..))
 import qualified Rift.Logger as Logger
 import System.Directory (getCurrentDirectory)
-import System.Exit (exitFailure)
-import System.FilePath ((<.>), (</>))
+import System.FilePath ((</>))
 
 -- | Building the project happens in multiple steps:
 --
@@ -79,9 +77,7 @@ buildProjectCommand dryRun nbCores dirtyFiles componentsToBuild env = do
   !components <- readPackageDhall "."
   Configuration lts extraDeps <- liftIO $ inputFile auto riftDhall
 
-  let ~ltsErr = do
-        Logger.error $ "LTS '" <> Text.pack (show lts) <> "' not found in the cache.\nMaybe you want to to run 'rift package update'?"
-        liftIO exitFailure
+  let ~ltsErr = liftIO $ throwIO (LTSNotFound lts)
   ltsDir <- maybe ltsErr pure =<< ltsPath (riftCache env) lts
 
   componentsToBuild <- case componentsToBuild of
@@ -102,9 +98,7 @@ buildProjectCommand dryRun nbCores dirtyFiles componentsToBuild env = do
 getComponentsByName :: (MonadIO m) => Map Text a -> [Text] -> m (Map Text a)
 getComponentsByName _ [] = pure mempty
 getComponentsByName components (c : cs) = case Map.lookup c components of
-  Nothing -> do
-    Logger.error $ "Component named '" <> c <> "' not found in local project."
-    liftIO exitFailure
+  Nothing -> liftIO $ throwIO (NoSuchComponent c)
   Just c1 ->
     let others = Map.delete c components
      in Map.insert c c1 <$> getComponentsByName others cs

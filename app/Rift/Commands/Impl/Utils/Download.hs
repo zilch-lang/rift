@@ -14,6 +14,7 @@ import qualified Algebra.Graph.AdjacencyMap as Cyclic
 import qualified Codec.Archive.Tar as Tar
 import qualified Codec.Archive.Zip as Zip
 import qualified Codec.Compression.GZip as GZip
+import Control.Exception (throwIO)
 import Control.Monad (forM_, unless, void, when)
 import Control.Monad.Catch (MonadMask)
 import Control.Monad.Extra (unlessM)
@@ -43,6 +44,7 @@ import Rift.Config.Project (ComponentType (..), ProjectType)
 import Rift.Config.Source (Location (..), Source (..), prettySource)
 import Rift.Config.Version (ConstraintExpr, PackageDependency (..), SemVer, VersionConstraint, trueConstraint)
 import Rift.Environment.Def (Environment (..))
+import Rift.Internal.Exceptions (RiftException (..))
 import qualified Rift.Logger as Logger
 import System.Directory (doesDirectoryExist, doesFileExist, listDirectory, removeDirectoryRecursive)
 import System.Exit (ExitCode (..), exitFailure)
@@ -65,29 +67,17 @@ resolvePackage name lts (constraintExpr, versionConstraint) force extra env = do
 
       case sortBy (flip compare `on` version) packages of
         [] -> do
-          -- extraCache <- readExtraDepsCache (riftCache env </> "extra-deps")
-
-          Logger.error $ "Package '" <> name <> "' not found in LTS '" <> Text.pack (show lts) <> "'"
-          liftIO exitFailure
+          liftIO $ throwIO $ NoSuchPackage name lts
         ps -> case filter (versionConstraint . version) ps of
           [] -> do
             let v1 = version $ head ps
-            Logger.error $
-              "Chosen LTS does not have a version of the package '"
-                <> name
-                <> "' satisfying the given constraint.\nLatest version found: "
-                <> Text.pack (show v1)
-                <> "\n\nWhile checking that the constraint '"
-                <> constraintExpr
-                <> "' holds."
-            liftIO exitFailure
+            liftIO $ throwIO $ BrokenVersionConstraint name constraintExpr
           ps@(p : _) -> do
             let candidates = filter ((==) (version p) . version) ps
 
             let candidates2 = filter (not . broken) candidates
             when (null candidates2) do
-              Logger.error $ "Cannot find a non-broken source for the package '" <> name <> " at version " <> Text.pack (show (version p))
-              liftIO exitFailure
+              liftIO $ throwIO $ PackageIsBroken name (version p)
 
             when (length candidates2 /= length candidates) do
               Logger.warn $ "Ignoring broken sources for package '" <> name <> "'"
@@ -98,17 +88,7 @@ resolvePackage name lts (constraintExpr, versionConstraint) force extra env = do
                 Logger.warn $ "Cannot find a source for the package '" <> name <> " at version " <> Text.pack (show (version p)) <> " which is not deprecated"
 
                 when (length candidates2 > 1) do
-                  Logger.error $
-                    foldl'
-                      (\acc p -> acc <> "\n- " <> prettySource (src p))
-                      ( "Ambiguous package '"
-                          <> name
-                          <> "' for version "
-                          <> Text.pack (show (version p))
-                          <> ".\nFound the following non-deprecated and non-broken candidates:"
-                      )
-                      candidates2
-                  liftIO exitFailure
+                  liftIO $ throwIO $ AmbiguousPackageSources name (version p) candidates2
 
                 pure (head candidates2)
               else do
@@ -116,17 +96,7 @@ resolvePackage name lts (constraintExpr, versionConstraint) force extra env = do
                   Logger.warn $ "Ignoring deprecated sources for the package '" <> name <> "'"
 
                 when (length candidates3 > 1) do
-                  Logger.error $
-                    foldl'
-                      (\acc p -> acc <> "\n- " <> prettySource (src p))
-                      ( "Ambiguous package '"
-                          <> name
-                          <> "' for version "
-                          <> Text.pack (show (version p))
-                          <> ".\nFound the following non-deprecated and non-broken candidates:"
-                      )
-                      candidates3
-                  liftIO exitFailure
+                  liftIO $ throwIO $ AmbiguousPackageSources name (version p) candidates3
 
                 pure (head candidates3)
 
@@ -148,7 +118,7 @@ fetchPackageTo depGraph lts ltsDir extraDepDir force infoCached env pkg@Pkg {..}
       then do
         case src of
           Directory _ -> pure ()
-          _ | infoCached -> Logger.info $ "Package '" <> name <> "' is already cached.\nUse --force to redownload it."
+          _ | infoCached -> Logger.info $ "Package '" <> name <> "' is already cached.\nUse '--force' to redownload it."
           _ -> pure ()
 
         project <- liftIO $ readPackageDhall pkgDir
@@ -188,25 +158,15 @@ fetchPackageTo depGraph lts ltsDir extraDepDir force infoCached env pkg@Pkg {..}
     dfs stack root graph =
       forM_ (Cyclic.postSet root graph) \pkg -> do
         when (pkg `elem` stack) do
-          Logger.error $ "Cyclic dependency encountered:\n" <> showCycle (reverse $ pkg : stack)
-          liftIO exitFailure
+          liftIO $ throwIO $ DependencyCycle (reverse $ pkg : stack)
         dfs (pkg : stack) pkg graph
-
-    showCycle = mappend "↳ Package " . showCycle' 2
-
-    showCycle' _ [] = ""
-    showCycle' _ [Pkg name _ _ _ _ _] = name
-    showCycle' n (Pkg name _ _ _ _ _ : ps) = name <> "\n" <> Text.replicate n " " <> "↳ depends on package " <> showCycle' (n + 2) ps
 
 checkConsistency :: (MonadIO m) => Text -> SemVer -> Map Text ComponentType -> m ()
 checkConsistency name ver cs = case Map.lookup name cs of
-  Nothing -> do
-    Logger.error $ "Component named '" <> name <> "' not found in the fetched package."
-    liftIO exitFailure
+  Nothing -> liftIO $ throwIO $ NoSuchComponent name
   Just (ComponentType ver2 _ _ _ _) -> do
     when (ver /= ver2) do
-      Logger.error $ "Inconsistency detected: component was expected to have version " <> Text.pack (show ver) <> " but the version " <> Text.pack (show ver2) <> " was found."
-      liftIO exitFailure
+      liftIO $ throwIO $ InconsistentComponentVersions ver ver2
 
 downloadAndExtract :: (MonadIO m, MonadHttp m, MonadMask m) => FilePath -> Source -> Environment -> m (FilePath, ProjectType, Configuration)
 downloadAndExtract dir dep env =
@@ -215,32 +175,20 @@ downloadAndExtract dir dep env =
       liftIO . Tar.unpack dir $ Tar.read tar
       liftIO $ copyArchive url dir path "Tarball" =<< listDirectory dir
     Tar (Local uri) sha256 -> error "TODO"
-    Tar (Environment _) _ -> do
-      Logger.error "Cannot fetch .tar archive from environment"
-      liftIO exitFailure
-    Tar Missing _ -> do
-      Logger.error "Cannot fetch .tar archive"
-      liftIO exitFailure
+    Tar (Environment _) _ -> liftIO $ throwIO $ InvalidDependencyLocation dep
+    Tar Missing _ -> liftIO $ throwIO $ InvalidDependencyLocation dep
     TarGz (Remote url) sha256 -> unpackArchive url sha256 \path dir tar -> do
       liftIO . Tar.unpack dir . Tar.read $ GZip.decompress tar
       liftIO $ copyArchive url dir path "GZipped tarball" =<< listDirectory dir
     TarGz (Local uri) sha256 -> error "TODO"
-    TarGz (Environment _) _ -> do
-      Logger.error "Cannot fetch .tar.gz archive from environment"
-      liftIO exitFailure
-    TarGz Missing _ -> do
-      Logger.error "Cannot fetch .tar.gz archive"
-      liftIO exitFailure
+    TarGz (Environment _) _ -> liftIO $ throwIO $ InvalidDependencyLocation dep
+    TarGz Missing _ -> liftIO $ throwIO $ InvalidDependencyLocation dep
     Zip (Remote url) sha256 -> unpackArchive url sha256 \path dir zip -> do
       liftIO . Zip.extractFilesFromArchive [Zip.OptDestination dir] $ Zip.toArchive zip
       liftIO $ copyArchive url dir path "Zipped" =<< listDirectory dir
     Zip (Local uri) sha256 -> error "TODO"
-    Zip (Environment _) _ -> do
-      Logger.error "Cannot fetch .zip archive from environment"
-      liftIO exitFailure
-    Zip Missing _ -> do
-      Logger.error "Cannot fetch .zip archive"
-      liftIO exitFailure
+    Zip (Environment _) _ -> liftIO $ throwIO $ InvalidDependencyLocation dep
+    Zip Missing _ -> liftIO $ throwIO $ InvalidDependencyLocation dep
     Git (Remote url) rev -> do
       let path = dir
       Logger.info $ "Checking git repository '" <> url <> "' at revision '" <> rev <> "'..."
@@ -283,9 +231,7 @@ downloadAndExtract dir dep env =
       project <- readPackageDhall path
       configuration <- liftIO $ inputFile auto (path </> riftDhall)
       pure (path, project, configuration)
-    Git _ _ -> do
-      Logger.error "Cannot fetch a git repository from any other location than a link"
-      liftIO exitFailure
+    Git _ _ -> liftIO $ throwIO $ InvalidDependencyLocation dep
   where
     unpackArchive url sha256 unpack = do
       let path = dir
@@ -304,8 +250,7 @@ downloadAndExtract dir dep env =
       let hashed = Text.pack $ show (hash (LBS.toStrict resp) :: Digest SHA256)
 
       when (hashed /= sha256) do
-        Logger.error $ "Cannot validate extra dependency '" <> url <> "':\n* Expected SHA256: " <> sha256 <> "\n* Got SHA256: " <> hashed
-        liftIO exitFailure
+        liftIO $ throwIO $ Sha256ValidationError url sha256 hashed
 
       withSystemTempDirectory "rift" \dir -> unpack path dir resp
 

@@ -10,6 +10,7 @@
 
 module Rift.Commands.Impl.NewProject (newProjectCommand) where
 
+import Control.Exception (throwIO)
 import Control.Monad (unless, when)
 import Control.Monad.Extra (unlessM, whenM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
@@ -24,6 +25,7 @@ import Rift.Commands.Impl.Utils.Paths (envDhall, projectDhall, riftDhall)
 import Rift.Config.PackageSet (LTSVersion (..), readLTSVersion)
 import Rift.Config.Template
 import Rift.Environment (Environment (..))
+import Rift.Internal.Exceptions (RiftException (..))
 import qualified Rift.Logger as Logger
 import System.Directory (createDirectory, createDirectoryIfMissing, doesDirectoryExist, listDirectory)
 import System.Exit (exitFailure)
@@ -34,22 +36,23 @@ import Turtle (ExitCode (..), empty, procStrictWithErr)
 newProjectCommand :: (MonadIO m) => FilePath -> Maybe Text -> Maybe Text -> Bool -> Environment -> m ()
 newProjectCommand path name template force Env {..} = do
   unlessM (liftIO $ doesDirectoryExist path) do
-    Logger.error $ "Cannot create project in path '" <> Text.pack path <> "' because it is not a directory."
-    liftIO exitFailure
+    liftIO $ throwIO (CannotCreateProjectInNonDirectory path)
+  -- Logger.error $ "Cannot create project in path '" <> Text.pack path <> "' because it is not a directory."
+  -- liftIO exitFailure
   whenM ((&& not force) . not <$> isDirectoryEmpty path) do
-    Logger.error "Cannot create project in a non-empty directory, unless '--force' is used."
-    liftIO exitFailure
+    liftIO $ throwIO CannotCreateProjectInNonEmptyDirectory
+  -- Logger.error "Cannot create project in a non-empty directory, unless '--force' is used."
+  -- liftIO exitFailure
 
   let projectName = fromMaybe "<my-project>" name
       projectTemplate = resolveTemplate (fromMaybe "executable" template)
 
   projectTemplate <-
-    maybe
-      ( Logger.error ("Template '" <> fromMaybe "executable" template <> "' not found.\nRun 'rift project template list' for a list of all templates.")
-          *> liftIO exitFailure
-      )
-      pure
-      projectTemplate
+    liftIO $
+      maybe
+        (throwIO $ UnknownProjectTemplate template)
+        pure
+        projectTemplate
 
   Logger.info $ "Initializing empty project in directory '" <> Text.pack path <> "'"
 

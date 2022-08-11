@@ -1,21 +1,21 @@
 let LTS =
-      https://raw.githubusercontent.com/zilch-lang/rift/7d05a7e8413ef8c19695152ad749f435b6ce09e5/lib/lts.dhall
+      https://raw.githubusercontent.com/zilch-lang/rift/00bd366210b51b8bc70c52cbc79f270d0f2f9c85/lib/lts.dhall
         sha256:11b148af43c98e53e30a373023774adaf4d292eec7933d9f214bf68714bcb141
 
 let Version =
-      https://raw.githubusercontent.com/zilch-lang/rift/7d05a7e8413ef8c19695152ad749f435b6ce09e5/lib/version.dhall
-        sha256:596564e58f0959e1cccfa1bb154948adb195d9220d381f0742f4058c9d083b58
+      https://raw.githubusercontent.com/zilch-lang/rift/00bd366210b51b8bc70c52cbc79f270d0f2f9c85/lib/version.dhall
+        sha256:54a70816c7185df69cd1d1a36410cc57a496e78d68422bc9d4332b6801d24275
 
 let ExtraDependency =
-      https://raw.githubusercontent.com/zilch-lang/rift/7d05a7e8413ef8c19695152ad749f435b6ce09e5/lib/extra-package.dhall
+      https://raw.githubusercontent.com/zilch-lang/rift/00bd366210b51b8bc70c52cbc79f270d0f2f9c85/lib/extra-package.dhall
         sha256:0cee6fd112dd9b821b12b7110f311d9b22d1a3bf74d324e883f39629ea252a4e
 
 let Source =
-  		https://raw.githubusercontent.com/zilch-lang/rift/7d05a7e8413ef8c19695152ad749f435b6ce09e5/lib/source.dhall
+  		https://raw.githubusercontent.com/zilch-lang/rift/00bd366210b51b8bc70c52cbc79f270d0f2f9c85/lib/source.dhall
         sha256:ffaf30bb1622a6263e063a95de730c38d44c235ebe540052d7b30c750404e4b4
 
 let Component =
-  		https://raw.githubusercontent.com/zilch-lang/rift/7d05a7e8413ef8c19695152ad749f435b6ce09e5/lib/component.dhall
+  		https://raw.githubusercontent.com/zilch-lang/rift/00bd366210b51b8bc70c52cbc79f270d0f2f9c85/lib/component.dhall
         sha256:bd4c557eb36312ea58510a87bc75a206e871f141c249e52df36d848e916f96a2
 
 let

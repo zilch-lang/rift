@@ -104,6 +104,7 @@ executable rift
     , template-haskell
     , temporary
     , text
+    , time
     , turtle
     , unordered-containers
     , zip-archive

@@ -63,3 +63,4 @@ executables:
     - multimap
     - algebraic-graphs
     - prettyprinter
+    - time

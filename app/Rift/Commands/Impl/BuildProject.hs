@@ -4,6 +4,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 module Rift.Commands.Impl.BuildProject where
@@ -11,10 +12,13 @@ module Rift.Commands.Impl.BuildProject where
 import qualified Algebra.Graph.Acyclic.AdjacencyMap as Acyclic
 import qualified Algebra.Graph.AdjacencyMap as Cyclic
 import Control.Exception (throwIO)
-import Control.Monad (forM, void)
+import Control.Monad (forM, void, when)
 import Control.Monad.Catch (MonadMask)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Bifunctor (second)
+import Data.Bifunctor (first, second)
+import Data.Bool (bool)
+import Data.Foldable (foldrM)
+import Data.IORef (IORef, modifyIORef, newIORef, readIORef)
 import Data.List (nub, uncons)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -22,6 +26,7 @@ import Data.Maybe (fromJust)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
+import qualified Data.Text.IO as Text
 import Dhall (auto, inputFile)
 import Network.HTTP.Req (MonadHttp)
 import Rift.Commands.Impl.Utils.Config (readPackageDhall)
@@ -36,8 +41,10 @@ import Rift.Config.Version (PackageDependency (..))
 import Rift.Environment (Environment, riftCache)
 import Rift.Internal.Exceptions (RiftException (..))
 import qualified Rift.Logger as Logger
+import qualified System.Console.ANSI as ANSI
 import System.Directory (getCurrentDirectory)
 import System.FilePath ((</>))
+import System.IO (stdout)
 
 -- | Building the project happens in multiple steps:
 --
@@ -111,32 +118,104 @@ getComponentsByName components (c : cs) = case Map.lookup c components of
 buildComponent :: (?logLevel :: Int, MonadIO m, MonadHttp m, MonadMask m) => LTSVersion -> FilePath -> Bool -> Bool -> Environment -> Text -> ComponentType -> m ()
 buildComponent lts ltsDir dryRun dirtyFiles env name (ComponentType ver deps sources kind flags) = do
   cwd <- liftIO getCurrentDirectory
-  let thisPkg = Pkg name ver (Directory $ Local $ Text.pack cwd) [] False False
+  let thisPkg' = Pkg name ver (Directory $ Local $ Text.pack cwd) [] False False
 
   -- get every dependency and fetch them in the cache
   -- beware of cycles when constructing the dependency graph
   !graph <-
-    fromJust . Acyclic.toAcyclic . Cyclic.connects <$> forM deps \(Version name versionConstraint) -> do
-      (depPkgPath, depPkg) <- resolvePackage name lts versionConstraint [thisPkg] env
-      fetchPackageTo (Cyclic.edge (cwd, thisPkg) (depPkgPath, depPkg)) lts (ltsDir </> "sources") (riftCache env </> "extra-deps") False False env depPkgPath depPkg
+    Cyclic.overlays <$> forM deps \(Version name versionConstraint) -> do
+      (depPkgPath, depPkg) <- resolvePackage name lts versionConstraint [thisPkg'] env
+      fetchPackageTo (Cyclic.edge (cwd, thisPkg') (depPkgPath, depPkg)) lts (ltsDir </> "sources") (riftCache env </> "extra-deps") False False env depPkgPath depPkg
+
+  -- remove all the packages which do not need to be rebuilt
+  -- one way to do this is to store the timestamp of the last modified file in the project in the @<project dir>/.rift@ directory
+  --   and check that no file has been modified afterwards
+  (graph, rebuild) <- first (fromJust . Acyclic.toAcyclic) <$> removeUnmodifiedLibs graph (cwd, thisPkg')
 
   -- now that we have the dependency graph, topsort it
   -- NOTE: if a /dependency/ is an executable, abort
-  let Just (thisPkg, sorted) = fmap (second reverse) (uncons $ Acyclic.topSort graph)
+  let Just (thisPkg, sorted) =
+        if Acyclic.vertexCount graph == 0
+          then Just ((cwd, thisPkg'), [])
+          else fmap (second reverse) (uncons $ Acyclic.topSort graph)
 
   -- the topsort gives us the order in which to build dependencies (our package should come last)
   -- however its order may need to be reversed
-  includeDirs <- forM sorted \(path, pkg) -> do
-    buildPackage path pkg dryRun
+  nbOutOf :: IORef Integer <- liftIO $ newIORef 1
+  let total = length sorted + 1
+      tot = show total
+  includeDirs <- forM sorted \(path, pkg@(Pkg name _ _ _ _ _)) ->
+    do
+      nbOutOf' <- liftIO $ readIORef nbOutOf
+      liftIO do
+        ANSI.hSetSGR stdout [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.Green, ANSI.SetConsoleIntensity ANSI.BoldIntensity]
+        Text.hPutStr stdout $ "[" <> pad ' ' (length tot) (Text.pack $ show nbOutOf') <> " of " <> Text.pack tot <> "]"
+        ANSI.hSetSGR stdout [ANSI.Reset]
+        Text.hPutStr stdout $ " Building package "
+        ANSI.hSetSGR stdout [ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.Magenta, ANSI.SetConsoleIntensity ANSI.BoldIntensity]
+        Text.hPutStr stdout name
+        ANSI.hSetSGR stdout [ANSI.Reset]
+        Text.hPutStrLn stdout $ "..."
 
-    pure $ dotRift path
+      buildPackage path pkg dryRun [] False
+
+      liftIO $ modifyIORef nbOutOf (+ 1)
+      pure $ dotRift path
 
   -- now build our package
   --
   -- the include directories returned will allow us to point to various useful data:
   -- - 'dir/interfaces' contains '.zci' files describing interfaces of modules
   -- - 'dir/objects' contains '.zco' objects containing compiled object files almost ready to be linked together
-  pure ()
 
-buildPackage :: (MonadIO m) => FilePath -> Package -> Bool -> m ()
-buildPackage path pkg dryRun = pure ()
+  let rebuildCurrent = rebuild || dirtyFiles
+  when rebuildCurrent do
+    liftIO do
+      nbOutOf' <- readIORef nbOutOf
+      let (_, Pkg name _ _ _ _ _) = thisPkg
+      ANSI.hSetSGR stdout [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.Green, ANSI.SetConsoleIntensity ANSI.BoldIntensity]
+      Text.hPutStr stdout $ "[" <> pad ' ' (length tot) (Text.pack $ show nbOutOf') <> " of " <> Text.pack tot <> "]"
+      ANSI.hSetSGR stdout [ANSI.Reset]
+      Text.hPutStr stdout $ " Building package "
+      ANSI.hSetSGR stdout [ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.Magenta, ANSI.SetConsoleIntensity ANSI.BoldIntensity]
+      Text.hPutStr stdout name
+      ANSI.hSetSGR stdout [ANSI.Reset]
+      Text.hPutStrLn stdout $ "..."
+
+    let (path, pkg) = thisPkg
+    buildPackage path pkg dryRun includeDirs True
+
+  pure ()
+  where
+    pad prefixChar max txt = Text.replicate (max - Text.length txt) (Text.singleton prefixChar) <> txt
+
+    removeUnmodifiedLibs :: (MonadIO m) => Cyclic.AdjacencyMap (FilePath, Package) -> (FilePath, Package) -> m (Cyclic.AdjacencyMap (FilePath, Package), Bool)
+    removeUnmodifiedLibs graph root = do
+      let check' pkg (graph, mods) = second (: mods) <$> removeUnmodifiedLibs graph pkg
+      (graph, modifications) <- foldrM check' (graph, []) (Set.toList $ Cyclic.postSet root graph)
+
+      selfModified <- checkModified root
+      let notForRemoval = case modifications of
+            [] ->
+              -- no children so only check if package was modified
+              selfModified
+            _ ->
+              -- if any child has been modified, then we need to be recompiled too
+              or (selfModified : modifications)
+
+      pure $
+        (,notForRemoval)
+          if notForRemoval
+            then graph
+            else Cyclic.removeVertex root graph
+
+    checkModified (path, pkg) = pure True -- TODO
+
+buildPackage :: (MonadIO m) => FilePath -> Package -> Bool -> [FilePath] -> Bool -> m ()
+buildPackage path pkg dryRun includeDirs isCurrentProject = do
+  -- when considering components, assume that:
+  -- - it is in the cache, in the package set
+  -- - all the dependencies were already built already, because of our topsort (although this is unreliable)
+  --   ideally we'd call @buildProjectCommand@ back with a different source directory
+
+  undefined

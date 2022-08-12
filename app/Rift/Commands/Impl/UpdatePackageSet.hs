@@ -89,13 +89,13 @@ updatePackageSetCommand Env {..} = do
 
   flip finally (backToUnstable git pkgsHome) $ forM_ tags \tag -> do
     liftIO $ withLockFile (riftHome </> "package-set.lock") do
-      Logger.info $ "Updating snapshot of LTS " <> tag <> "..."
+      Logger.info $ "Updating and precompiling snapshot of LTS " <> tag <> "..."
 
       (exit, out, err) <- procStrictWithErr (Text.pack git) ["-C", Text.pack pkgsHome, "checkout", tag, "--force", "--detach"] empty
       unless (exit == ExitSuccess) do
         liftIO $ throwIO $ ExternalCommandError "Could not update the package set due to a git error." out err
 
-      let snapshotPath = pkgsHome </> "packages" </> "set" <.> "dhall"
+      let snapshotPath = setDhallPath pkgsHome
       setDhallHash <- fromJust . Text.stripPrefix "sha256:" <$> dhallHash snapshotPath
       snapshot <- inputFile auto snapshotPath :: IO Snapshot
       let ltsName = show (ltsOf snapshot)
@@ -112,8 +112,6 @@ updatePackageSetCommand Env {..} = do
       -- precompile the LTS package set in order to resolve all links only once instead of each time parsing it
       -- this will speed up future lookups
       let setDhall = setDhallPath (ltsDir </> "lts")
-      Logger.info $ "Precompiling snapshot of LTS " <> tag <> " (this may take a while)..."
-      snapshot <- liftIO (inputFile auto setDhall :: IO Snapshot)
       Text.writeFile setDhall (Dhall.pretty $ Dhall.embed Dhall.inject snapshot)
 
       pure ()

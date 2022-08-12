@@ -103,6 +103,7 @@ buildProjectCommand dryRun nbCores dirtyFiles componentsToBuild env = do
   -- TODO: fetch and build all extra dependencies, we may need them
   -- but beware of dependency cycles!
 
+  -- FIXME: we will want to also allow dependencies across local components
   void $ flip Map.traverseWithKey componentsToBuild (buildComponent lts ltsDir dryRun dirtyFiles env)
 
   pure ()
@@ -144,23 +145,11 @@ buildComponent lts ltsDir dryRun dirtyFiles env name (ComponentType ver deps sou
   nbOutOf :: IORef Integer <- liftIO $ newIORef 1
   let total = length sorted + 1
       tot = show total
-  includeDirs <- forM sorted \(path, pkg@(Pkg name _ _ _ _ _)) ->
-    do
-      nbOutOf' <- liftIO $ readIORef nbOutOf
-      liftIO do
-        ANSI.hSetSGR stdout [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.Green, ANSI.SetConsoleIntensity ANSI.BoldIntensity]
-        Text.hPutStr stdout $ "[" <> pad ' ' (length tot) (Text.pack $ show nbOutOf') <> " of " <> Text.pack tot <> "]"
-        ANSI.hSetSGR stdout [ANSI.Reset]
-        Text.hPutStr stdout $ " Building package "
-        ANSI.hSetSGR stdout [ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.Magenta, ANSI.SetConsoleIntensity ANSI.BoldIntensity]
-        Text.hPutStr stdout name
-        ANSI.hSetSGR stdout [ANSI.Reset]
-        Text.hPutStrLn stdout $ "..."
+  includeDirs <- forM sorted \(path, pkg) -> do
+    buildPackage' nbOutOf tot [] False path pkg
 
-      buildPackage path pkg dryRun [] False
-
-      liftIO $ modifyIORef nbOutOf (+ 1)
-      pure $ dotRift path
+    liftIO $ modifyIORef nbOutOf (+ 1)
+    pure $ dotRift path
 
   -- now build our package
   --
@@ -170,23 +159,25 @@ buildComponent lts ltsDir dryRun dirtyFiles env name (ComponentType ver deps sou
 
   let rebuildCurrent = rebuild || dirtyFiles
   when rebuildCurrent do
-    liftIO do
-      nbOutOf' <- readIORef nbOutOf
-      let (_, Pkg name _ _ _ _ _) = thisPkg
-      ANSI.hSetSGR stdout [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.Green, ANSI.SetConsoleIntensity ANSI.BoldIntensity]
-      Text.hPutStr stdout $ "[" <> pad ' ' (length tot) (Text.pack $ show nbOutOf') <> " of " <> Text.pack tot <> "]"
-      ANSI.hSetSGR stdout [ANSI.Reset]
-      Text.hPutStr stdout $ " Building package "
-      ANSI.hSetSGR stdout [ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.Magenta, ANSI.SetConsoleIntensity ANSI.BoldIntensity]
-      Text.hPutStr stdout name
-      ANSI.hSetSGR stdout [ANSI.Reset]
-      Text.hPutStrLn stdout $ "..."
-
-    let (path, pkg) = thisPkg
-    buildPackage path pkg dryRun includeDirs True
+    uncurry (buildPackage' nbOutOf tot includeDirs True) thisPkg
 
   pure ()
   where
+    buildPackage' nbOutOf tot includeDirs isThisPackage path pkg@(Pkg name _ _ _ _ _) = do
+      liftIO do
+        nbOutOf' <- readIORef nbOutOf
+
+        ANSI.hSetSGR stdout [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.Green, ANSI.SetConsoleIntensity ANSI.BoldIntensity]
+        Text.hPutStr stdout $ "[" <> pad ' ' (length tot) (Text.pack $ show nbOutOf') <> " of " <> Text.pack tot <> "]"
+        ANSI.hSetSGR stdout [ANSI.Reset]
+        Text.hPutStr stdout $ " Building package "
+        ANSI.hSetSGR stdout [ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.Magenta, ANSI.SetConsoleIntensity ANSI.BoldIntensity]
+        Text.hPutStr stdout name
+        ANSI.hSetSGR stdout [ANSI.Reset]
+        Text.hPutStrLn stdout $ "..."
+
+      buildPackage path pkg dryRun includeDirs isThisPackage
+
     pad prefixChar max txt = Text.replicate (max - Text.length txt) (Text.singleton prefixChar) <> txt
 
     removeUnmodifiedLibs :: (MonadIO m) => Cyclic.AdjacencyMap (FilePath, Package) -> (FilePath, Package) -> m (Cyclic.AdjacencyMap (FilePath, Package), Bool)
@@ -214,7 +205,6 @@ buildComponent lts ltsDir dryRun dirtyFiles env name (ComponentType ver deps sou
 buildPackage :: (MonadIO m) => FilePath -> Package -> Bool -> [FilePath] -> Bool -> m ()
 buildPackage path pkg dryRun includeDirs isCurrentProject = do
   -- when considering components, assume that:
-  -- - it is in the cache, in the package set
   -- - all the dependencies were already built already, because of our topsort (although this is unreliable)
   --   ideally we'd call @buildProjectCommand@ back with a different source directory
 

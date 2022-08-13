@@ -17,9 +17,9 @@ import Control.Monad.Catch (MonadMask)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Bifunctor (first, second)
 import Data.Bool (bool)
-import Data.Foldable (foldrM)
+import Data.Foldable (fold, foldrM)
 import Data.IORef (IORef, modifyIORef, newIORef, readIORef)
-import Data.List (nub, uncons)
+import Data.List (intersperse, nub, uncons)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (fromJust)
@@ -30,6 +30,7 @@ import qualified Data.Text.IO as Text
 import Dhall (auto, inputFile)
 import Network.HTTP.Req (MonadHttp)
 import Rift.Commands.Impl.Utils.Config (readPackageDhall)
+import Rift.Commands.Impl.Utils.Directory (listDirectoryRecursive)
 import Rift.Commands.Impl.Utils.Download (fetchPackageTo, resolvePackage)
 import Rift.Commands.Impl.Utils.Paths (dotRift, ltsPath, riftDhall)
 import Rift.Config.Configuration (Configuration (..))
@@ -43,7 +44,7 @@ import Rift.Internal.Exceptions (RiftException (..))
 import qualified Rift.Logger as Logger
 import qualified System.Console.ANSI as ANSI
 import System.Directory (getCurrentDirectory)
-import System.FilePath ((</>))
+import System.FilePath (dropExtension, makeRelative, splitDirectories, splitPath, takeExtension, (</>))
 import System.IO (stdout)
 
 -- | Building the project happens in multiple steps:
@@ -98,8 +99,6 @@ buildProjectCommand dryRun nbCores dirtyFiles componentsToBuild env = do
       pure components
     cs -> getComponentsByName (Map.restrictKeys components (Set.fromList cs)) (nub cs)
 
-  -- snapshot <- liftIO $ snapshotFromDhallFile (ltsDir </> "lts" </> "packages" </> "set.dhall") env
-
   -- TODO: fetch and build all extra dependencies, we may need them
   -- but beware of dependency cycles!
 
@@ -134,9 +133,6 @@ buildComponent lts ltsDir dryRun dirtyFiles additional env name (ComponentType v
       )
       Cyclic.empty
       deps
-  -- Cyclic.overlays <$> forM deps \(Version name versionConstraint) -> do
-  --   (depPkgPath, depPkg) <- resolvePackage name lts versionConstraint (snd <$> additional) env
-  --   fetchPackageTo (Cyclic.edge (cwd, thisPkg') (depPkgPath, depPkg)) lts (ltsDir </> "sources") (riftCache env </> "extra-deps") False False env depPkgPath depPkg
 
   -- remove all the packages which do not need to be rebuilt
   -- one way to do this is to store the timestamp of the last modified file in the project in the @<project dir>/.rift@ directory
@@ -144,7 +140,6 @@ buildComponent lts ltsDir dryRun dirtyFiles additional env name (ComponentType v
   (graph, rebuild) <- first (fromJust . Acyclic.toAcyclic) <$> removeUnmodifiedLibs graph (cwd, thisPkg')
 
   -- now that we have the dependency graph, topsort it
-  -- NOTE: if a /dependency/ is an executable, abort
   let Just (thisPkg, sorted) =
         if Acyclic.vertexCount graph == 0
           then Just ((cwd, thisPkg'), [])
@@ -212,11 +207,37 @@ buildComponent lts ltsDir dryRun dirtyFiles additional env name (ComponentType v
 
     checkModified (path, pkg) = pure True -- TODO
 
-buildPackage :: (MonadIO m) => FilePath -> Package -> Bool -> [FilePath] -> Bool -> m ()
+buildPackage :: (MonadIO m, ?logLevel :: Int) => FilePath -> Package -> Bool -> [FilePath] -> Bool -> m ()
 buildPackage path pkg dryRun includeDirs isCurrentProject = do
   -- when considering components, assume that:
-  -- - all the dependencies were already built already, because of our topsort (although this is unreliable)
-  --   ideally we'd call @buildProjectCommand@ back with a different source directory
+  -- - all the dependencies were already built, because of our topsort (although this is unreliable)
 
-  --undefined
-  pure ()
+  project <- readPackageDhall path
+  configuration <- liftIO (inputFile auto (path </> riftDhall) :: IO Configuration)
+  let ComponentType _ deps srcDirs kind gzcFlags = project Map.! name pkg
+
+  let include = ((path </>) . Text.unpack <$> srcDirs) <> includeDirs
+      srcDirs' = (path </>) . Text.unpack <$> srcDirs
+  files <-
+    liftIO $
+      mconcat <$> forM srcDirs' \dir -> do
+        children <- listDirectoryRecursive dir
+        pure $ makeRelative dir <$> children
+
+  let files' = filter ((== ".zc") . takeExtension) files
+      modules = fold . intersperse "::" . splitDirectories . dropExtension <$> files'
+
+  Logger.debug $ "Building modules " <> Text.pack (show $ Text.pack <$> modules) <> " of package " <> name pkg
+
+  let command =
+        ["gzc"]
+          <> gzcFlags
+          <> (Text.pack <$> modules)
+          <> ("-I" : intersperse "-I" (Text.pack <$> include))
+          <> ["-ddump-dir=" <> Text.pack (dotRift path), "--keep-zco", "--keep-zci"]
+
+  if dryRun
+    then do
+      liftIO $ putStrLn $ unwords $ Text.unpack <$> command
+      pure ()
+    else undefined

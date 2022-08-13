@@ -103,8 +103,11 @@ buildProjectCommand dryRun nbCores dirtyFiles componentsToBuild env = do
   -- TODO: fetch and build all extra dependencies, we may need them
   -- but beware of dependency cycles!
 
-  -- FIXME: we will want to also allow dependencies across local components
-  void $ flip Map.traverseWithKey componentsToBuild (buildComponent lts ltsDir dryRun dirtyFiles env)
+  cwd <- liftIO getCurrentDirectory
+  let additionalPkgs = Map.elems $
+        flip Map.mapWithKey components \name (ComponentType ver _ _ _ _) -> (cwd, Pkg name ver (Directory $ Local $ Text.pack cwd) [] False False)
+
+  void $ flip Map.traverseWithKey componentsToBuild (buildComponent lts ltsDir dryRun dirtyFiles additionalPkgs env)
 
   pure ()
 
@@ -116,17 +119,24 @@ getComponentsByName components (c : cs) = case Map.lookup c components of
     let others = Map.delete c components
      in Map.insert c c1 <$> getComponentsByName others cs
 
-buildComponent :: (?logLevel :: Int, MonadIO m, MonadHttp m, MonadMask m) => LTSVersion -> FilePath -> Bool -> Bool -> Environment -> Text -> ComponentType -> m ()
-buildComponent lts ltsDir dryRun dirtyFiles env name (ComponentType ver deps sources kind flags) = do
+buildComponent :: (?logLevel :: Int, MonadIO m, MonadHttp m, MonadMask m) => LTSVersion -> FilePath -> Bool -> Bool -> [(FilePath, Package)] -> Environment -> Text -> ComponentType -> m ()
+buildComponent lts ltsDir dryRun dirtyFiles additional env name (ComponentType ver deps _ _ _) = do
   cwd <- liftIO getCurrentDirectory
   let thisPkg' = Pkg name ver (Directory $ Local $ Text.pack cwd) [] False False
 
   -- get every dependency and fetch them in the cache
   -- beware of cycles when constructing the dependency graph
   !graph <-
-    Cyclic.overlays <$> forM deps \(Version name versionConstraint) -> do
-      (depPkgPath, depPkg) <- resolvePackage name lts versionConstraint [thisPkg'] env
-      fetchPackageTo (Cyclic.edge (cwd, thisPkg') (depPkgPath, depPkg)) lts (ltsDir </> "sources") (riftCache env </> "extra-deps") False False env depPkgPath depPkg
+    foldrM
+      ( \(Version name versionConstraint) graph -> do
+          (depPkgPath, depPkg) <- resolvePackage name lts versionConstraint (snd <$> additional) env
+          fetchPackageTo (graph `Cyclic.overlay` Cyclic.edge (cwd, thisPkg') (depPkgPath, depPkg)) lts (ltsDir </> "sources") (riftCache env </> "extra-deps") False False env depPkgPath depPkg
+      )
+      Cyclic.empty
+      deps
+  -- Cyclic.overlays <$> forM deps \(Version name versionConstraint) -> do
+  --   (depPkgPath, depPkg) <- resolvePackage name lts versionConstraint (snd <$> additional) env
+  --   fetchPackageTo (Cyclic.edge (cwd, thisPkg') (depPkgPath, depPkg)) lts (ltsDir </> "sources") (riftCache env </> "extra-deps") False False env depPkgPath depPkg
 
   -- remove all the packages which do not need to be rebuilt
   -- one way to do this is to store the timestamp of the last modified file in the project in the @<project dir>/.rift@ directory
@@ -208,4 +218,5 @@ buildPackage path pkg dryRun includeDirs isCurrentProject = do
   -- - all the dependencies were already built already, because of our topsort (although this is unreliable)
   --   ideally we'd call @buildProjectCommand@ back with a different source directory
 
-  undefined
+  --undefined
+  pure ()

@@ -37,7 +37,7 @@ import Network.HTTP.Req (GET (GET), MonadHttp, NoReqBody (..), lbsResponse, req,
 import Rift.Commands.Impl.Utils.Config (readPackageDhall)
 import Rift.Commands.Impl.Utils.Directory (copyDirectoryRecursive)
 import Rift.Commands.Impl.Utils.ExtraDependencyCacheManager (insertExtraDependency)
-import Rift.Commands.Impl.Utils.Paths (ltsPath, packagePath, projectDhall, riftDhall, sourcePath)
+import Rift.Commands.Impl.Utils.Paths (ltsPath, packagePath, projectDhall, riftDhall, setDhallPath, sourcePath)
 import Rift.Config.Configuration (Configuration (..))
 import Rift.Config.Package (ExtraPackage (..), Package (..))
 import Rift.Config.PackageSet (LTSVersion, Snapshot (..))
@@ -61,7 +61,7 @@ resolvePackage name lts (constraintExpr, versionConstraint) extra env = do
   case ltsDir of
     Nothing -> liftIO $ throwIO $ LTSNotFound lts
     Just ltsDir -> do
-      Snapshot _ _ packageSet <- liftIO (inputFile auto (ltsDir </> "lts" </> "packages" </> "set" <.> "dhall") :: IO Snapshot)
+      Snapshot _ _ packageSet <- liftIO (inputFile auto (setDhallPath (ltsDir </> "lts")) :: IO Snapshot)
       let packages = filter (\(Pkg n _ _ _ _ _) -> n == name) (extra <> packageSet)
 
       case sortBy (flip compare `on` version) packages of
@@ -114,8 +114,11 @@ fetchPackageTo depGraph lts ltsDir extraDepDir force infoCached env pkgPath pkg@
   let pkgDir = packagePath pkg ltsDir
   (graph', _, components, _) <- do
     pathExists <- liftIO $ doesDirectoryExist pkgDir
+    let isDirDep = case src of
+          Directory _ -> True
+          _ -> False
 
-    if not force && pathExists
+    if not force && pathExists && not isDirDep
       then do
         case src of
           Directory _ -> pure ()
@@ -127,7 +130,9 @@ fetchPackageTo depGraph lts ltsDir extraDepDir force infoCached env pkgPath pkg@
         pure (depGraph, pkgDir, project, configuration)
       else do
         (pkgDir, project, configuration@(Configuration _ extraDeps)) <- downloadAndExtract pkgDir src env
-        let deps = Map.elems project >>= \(ComponentType _ d _ _ _) -> d
+        let project' = Map.filterWithKey (const . (== name)) project
+        let deps = Map.elems project' >>= \(ComponentType _ d _ _ _) -> d
+        let extraPkgs = Map.elems $ flip Map.mapWithKey project \name (ComponentType ver _ _ _ _) -> Pkg name ver (Directory $ Local $ Text.pack pkgDir) [] False False
 
         -- - fetch extra dependencies
         forM_ extraDeps \(ExtraPkg name version source) -> do
@@ -140,7 +145,7 @@ fetchPackageTo depGraph lts ltsDir extraDepDir force infoCached env pkgPath pkg@
             insertExtraDependency name version srcPath source env
 
         -- - fetch dependencies
-        graph' <- foldrM (resolveDep (pkgDir, pkg) lts ltsDir extraDepDir force env) depGraph deps
+        graph' <- foldrM (resolveDep (pkgDir, pkg) lts ltsDir extraDepDir force extraPkgs env) depGraph deps
 
         pure (graph', pkgDir, project, configuration)
 
@@ -148,9 +153,9 @@ fetchPackageTo depGraph lts ltsDir extraDepDir force infoCached env pkgPath pkg@
 
   pure graph'
   where
-    resolveDep :: (MonadIO m, MonadHttp m, MonadMask m) => (FilePath, Package) -> LTSVersion -> FilePath -> FilePath -> Bool -> Environment -> PackageDependency -> Cyclic.AdjacencyMap (FilePath, Package) -> m (Cyclic.AdjacencyMap (FilePath, Package))
-    resolveDep thisPkg lts ltsDir extraDepDir force env (Version name constraint) depGraph = do
-      (pkgPath, pkg) <- resolvePackage name lts constraint [] env
+    resolveDep :: (MonadIO m, MonadHttp m, MonadMask m) => (FilePath, Package) -> LTSVersion -> FilePath -> FilePath -> Bool -> [Package] -> Environment -> PackageDependency -> Cyclic.AdjacencyMap (FilePath, Package) -> m (Cyclic.AdjacencyMap (FilePath, Package))
+    resolveDep thisPkg lts ltsDir extraDepDir force extra env (Version name constraint) depGraph = do
+      (pkgPath, pkg) <- resolvePackage name lts constraint extra env
       fetchPackageTo (depGraph `Cyclic.overlay` Cyclic.edge thisPkg (pkgPath, pkg)) lts ltsDir extraDepDir force infoCached env pkgPath pkg
     {-# INLINE resolveDep #-}
 
@@ -218,6 +223,11 @@ downloadAndExtract dir dep env =
       configuration <- liftIO $ inputFile auto (path </> riftDhall)
       pure (path, project, configuration)
     Git _ _ -> liftIO $ throwIO $ InvalidDependencyLocation dep
+    Directory (Local path) -> do
+      let path' = Text.unpack path
+      project <- readPackageDhall path'
+      configuration <- liftIO $ inputFile auto (path' </> riftDhall)
+      pure (path', project, configuration)
   where
     unpackArchive url sha256 unpack = do
       let path = dir

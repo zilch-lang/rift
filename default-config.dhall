@@ -11,11 +11,11 @@ let ExtraDependency =
         sha256:0cee6fd112dd9b821b12b7110f311d9b22d1a3bf74d324e883f39629ea252a4e
 
 let Source =
-  		https://raw.githubusercontent.com/zilch-lang/rift/00bd366210b51b8bc70c52cbc79f270d0f2f9c85/lib/source.dhall
+      https://raw.githubusercontent.com/zilch-lang/rift/00bd366210b51b8bc70c52cbc79f270d0f2f9c85/lib/source.dhall
         sha256:ffaf30bb1622a6263e063a95de730c38d44c235ebe540052d7b30c750404e4b4
 
 let Component =
-  		https://raw.githubusercontent.com/zilch-lang/rift/00bd366210b51b8bc70c52cbc79f270d0f2f9c85/lib/component.dhall
+      https://raw.githubusercontent.com/zilch-lang/rift/00bd366210b51b8bc70c52cbc79f270d0f2f9c85/lib/component.dhall
         sha256:bd4c557eb36312ea58510a87bc75a206e871f141c249e52df36d848e916f96a2
 
 let
@@ -43,15 +43,21 @@ let {- |
               Additional dependencies which are not part of the package set.
             -}
             extra-deps : List ExtraDependency.Type
+          , {- |
+                Whether to use the GZC compiler installed on the system or not?
+            	-}
+            system-gzc : Bool
+          , {- |
+              The path to the system GZC.
+              This setting has no purpose if 'system-gzc' is set to 'False'.
+            -}
+            gzc-path : Optional Text
           }
-      , default.extra-deps = [] : List ExtraDependency.Type
+      , default = {
+      		extra-deps = [] : List ExtraDependency.Type
+      	, system-gzc = False
+      	, gzc-path = None Text
+      	}
       }
 
-in  { Project
-    , Configuration
-    , Version
-    , Component
-    , ExtraDependency
-    , LTS
-    , Source
-    }
+in  { Project, Configuration, Version, Component, ExtraDependency, LTS, Source }

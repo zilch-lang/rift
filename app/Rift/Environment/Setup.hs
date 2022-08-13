@@ -64,6 +64,7 @@ setupEnv warnAboutPkgsSetNotInit = liftIO do
           writeDhallConfigToRiftCfg riftCfg
 
       riftCache <- getXdgDirectory XdgCache "rift"
+      riftConfig <- getXdgDirectory XdgConfig "rift"
 
       when warnAboutPkgsSetNotInit do
         let packageSetPath = riftCache </> "pkgs"
@@ -78,7 +79,7 @@ setupEnv warnAboutPkgsSetNotInit = liftIO do
             exitFailure
           Just p -> pure p
 
-      pure $ Env {riftHome, riftCache, git}
+      pure $ Env {riftHome, riftConfig, riftCache, git}
 
 -- | Writes the default template to the given configuration path.
 writeDhallConfigToRiftCfg :: Setup m => FilePath -> m ()

@@ -34,7 +34,7 @@ import Data.Text.Encoding (decodeUtf8)
 import Data.Text.Read (decimal)
 import Dhall (auto, inputFile)
 import Network.HTTP.Req (GET (GET), MonadHttp, NoReqBody (..), lbsResponse, req, responseBody, responseHeader, useURI)
-import Rift.Commands.Impl.Utils.Config (readPackageDhall)
+import Rift.Commands.Impl.Utils.Config (readPackageDhall, readRiftDhall)
 import Rift.Commands.Impl.Utils.Directory (copyDirectoryRecursive)
 import Rift.Commands.Impl.Utils.ExtraDependencyCacheManager (insertExtraDependency)
 import Rift.Commands.Impl.Utils.Paths (ltsPath, packagePath, projectDhall, riftDhall, setDhallPath, sourcePath)
@@ -125,11 +125,11 @@ fetchPackageTo depGraph lts ltsDir extraDepDir force infoCached env pkgPath pkg@
           _ | infoCached -> Logger.info $ "Package '" <> name <> "' is already cached.\nUse '--force' to redownload it."
           _ -> pure ()
 
-        project <- liftIO $ readPackageDhall pkgDir
-        configuration <- liftIO $ inputFile auto (pkgDir </> riftDhall)
+        project <- readPackageDhall pkgDir
+        configuration <- readRiftDhall pkgDir env
         pure (depGraph, pkgDir, project, configuration)
       else do
-        (pkgDir, project, configuration@(Configuration _ extraDeps)) <- downloadAndExtract pkgDir src env
+        (pkgDir, project, configuration@(Configuration _ extraDeps _ _)) <- downloadAndExtract pkgDir src env
         let project' = Map.filterWithKey (const . (== name)) project
         let deps = Map.elems project' >>= \(ComponentType _ d _ _ _) -> d
         let extraPkgs = Map.elems $ flip Map.mapWithKey project \name (ComponentType ver _ _ _ _) -> Pkg name ver (Directory $ Local $ Text.pack pkgDir) [] False False
@@ -226,7 +226,7 @@ downloadAndExtract dir dep env =
     Directory (Local path) -> do
       let path' = Text.unpack path
       project <- readPackageDhall path'
-      configuration <- liftIO $ inputFile auto (path' </> riftDhall)
+      configuration <- readRiftDhall path' env
       pure (path', project, configuration)
   where
     unpackArchive url sha256 unpack = do
@@ -249,7 +249,7 @@ downloadAndExtract dir dep env =
       void $ withSystemTempDirectory "rift" \dir -> unpack path dir resp
 
       project <- readPackageDhall path
-      configuration <- liftIO $ inputFile auto (path </> riftDhall)
+      configuration <- readRiftDhall path env
 
       pure (path, project, configuration)
 

@@ -21,18 +21,18 @@ import Data.IORef (IORef, modifyIORef, newIORef, readIORef)
 import Data.List (intersperse, nub, uncons)
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, fromMaybe)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import Dhall (auto, inputFile)
 import Network.HTTP.Req (MonadHttp)
-import Rift.Commands.Impl.Utils.Config (readPackageDhall)
+import Rift.Commands.Impl.Utils.Config (readPackageDhall, readRiftDhall)
 import Rift.Commands.Impl.Utils.Directory (listDirectoryRecursive)
 import Rift.Commands.Impl.Utils.Download (fetchPackageTo, resolvePackage)
 import Rift.Commands.Impl.Utils.Paths (dotRift, ltsPath, riftDhall)
-import Rift.Config.Configuration (Configuration (..))
+import Rift.Config.Configuration (Configuration (..), systemGZCPath, useSystemGZC)
 import Rift.Config.Package (Package (..))
 import Rift.Config.PackageSet (LTSVersion)
 import Rift.Config.Project (ComponentType (..))
@@ -83,8 +83,9 @@ import System.IO (stdout)
 --   6. I don't know
 buildProjectCommand :: (?logLevel :: Int, MonadIO m, MonadHttp m, MonadMask m) => Bool -> Integer -> Bool -> [Text] -> Environment -> m ()
 buildProjectCommand dryRun nbCores dirtyFiles componentsToBuild env = do
-  !components <- readPackageDhall "."
-  Configuration lts extraDeps <- liftIO $ inputFile auto riftDhall
+  cwd <- liftIO getCurrentDirectory
+  !components <- readPackageDhall cwd
+  Configuration lts extraDeps _ _ <- readRiftDhall cwd env
 
   let ~ltsErr = liftIO $ throwIO (LTSNotFound lts)
   ltsDir <- maybe ltsErr pure =<< ltsPath (riftCache env) lts
@@ -211,7 +212,7 @@ buildPackage path pkg dryRun isCurrentProject lts env = do
   -- - all the dependencies were already built, because of our topsort (although this is unreliable)
 
   project <- readPackageDhall path
-  configuration <- liftIO (inputFile auto (path </> riftDhall) :: IO Configuration)
+  configuration <- readRiftDhall path env
   let ComponentType _ deps srcDirs kind gzcFlags = project Map.! name pkg
 
   let pkgsHere = Map.elems $ flip Map.mapWithKey project \name (ComponentType ver _ _ _ _) -> Pkg name ver (Directory $ Local $ Text.pack path) [] False False
@@ -231,7 +232,7 @@ buildPackage path pkg dryRun isCurrentProject lts env = do
   Logger.debug $ "Building modules " <> Text.pack (show $ Text.pack <$> modules) <> " of package " <> name pkg
 
   let command =
-        ["gzc"]
+        [if useSystemGZC configuration then fromMaybe "gzc" $ systemGZCPath configuration else undefined]
           <> gzcFlags
           <> (Text.pack <$> modules)
           <> ("-I" : intersperse "-I" (Text.pack <$> include))

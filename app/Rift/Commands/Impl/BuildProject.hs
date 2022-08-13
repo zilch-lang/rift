@@ -12,11 +12,10 @@ module Rift.Commands.Impl.BuildProject where
 import qualified Algebra.Graph.Acyclic.AdjacencyMap as Acyclic
 import qualified Algebra.Graph.AdjacencyMap as Cyclic
 import Control.Exception (throwIO)
-import Control.Monad (forM, void, when)
+import Control.Monad (forM, forM_, void, when)
 import Control.Monad.Catch (MonadMask)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Bifunctor (first, second)
-import Data.Bool (bool)
 import Data.Foldable (fold, foldrM)
 import Data.IORef (IORef, modifyIORef, newIORef, readIORef)
 import Data.List (intersperse, nub, uncons)
@@ -44,7 +43,7 @@ import Rift.Internal.Exceptions (RiftException (..))
 import qualified Rift.Logger as Logger
 import qualified System.Console.ANSI as ANSI
 import System.Directory (getCurrentDirectory)
-import System.FilePath (dropExtension, makeRelative, splitDirectories, splitPath, takeExtension, (</>))
+import System.FilePath (dropExtension, makeRelative, splitDirectories, takeExtension, (</>))
 import System.IO (stdout)
 
 -- | Building the project happens in multiple steps:
@@ -150,11 +149,10 @@ buildComponent lts ltsDir dryRun dirtyFiles additional env name (ComponentType v
   nbOutOf :: IORef Integer <- liftIO $ newIORef 1
   let total = length sorted + 1
       tot = show total
-  includeDirs <- forM sorted \(path, pkg) -> do
-    buildPackage' nbOutOf tot [] False path pkg
+  forM_ sorted \(path, pkg) -> do
+    buildPackage' nbOutOf tot False path pkg
 
     liftIO $ modifyIORef nbOutOf (+ 1)
-    pure $ dotRift path
 
   -- now build our package
   --
@@ -164,11 +162,11 @@ buildComponent lts ltsDir dryRun dirtyFiles additional env name (ComponentType v
 
   let rebuildCurrent = rebuild || dirtyFiles
   when rebuildCurrent do
-    uncurry (buildPackage' nbOutOf tot includeDirs True) thisPkg
+    uncurry (buildPackage' nbOutOf tot True) thisPkg
 
   pure ()
   where
-    buildPackage' nbOutOf tot includeDirs isThisPackage path pkg@(Pkg name _ _ _ _ _) = do
+    buildPackage' nbOutOf tot isThisPackage path pkg@(Pkg name _ _ _ _ _) = do
       liftIO do
         nbOutOf' <- readIORef nbOutOf
 
@@ -181,7 +179,7 @@ buildComponent lts ltsDir dryRun dirtyFiles additional env name (ComponentType v
         ANSI.hSetSGR stdout [ANSI.Reset]
         Text.hPutStrLn stdout $ "..."
 
-      buildPackage path pkg dryRun includeDirs isThisPackage
+      buildPackage path pkg dryRun isThisPackage lts env
 
     pad prefixChar max txt = Text.replicate (max - Text.length txt) (Text.singleton prefixChar) <> txt
 
@@ -207,14 +205,17 @@ buildComponent lts ltsDir dryRun dirtyFiles additional env name (ComponentType v
 
     checkModified (path, pkg) = pure True -- TODO
 
-buildPackage :: (MonadIO m, ?logLevel :: Int) => FilePath -> Package -> Bool -> [FilePath] -> Bool -> m ()
-buildPackage path pkg dryRun includeDirs isCurrentProject = do
+buildPackage :: (MonadIO m, ?logLevel :: Int, MonadHttp m, MonadMask m) => FilePath -> Package -> Bool -> Bool -> LTSVersion -> Environment -> m ()
+buildPackage path pkg dryRun isCurrentProject lts env = do
   -- when considering components, assume that:
   -- - all the dependencies were already built, because of our topsort (although this is unreliable)
 
   project <- readPackageDhall path
   configuration <- liftIO (inputFile auto (path </> riftDhall) :: IO Configuration)
   let ComponentType _ deps srcDirs kind gzcFlags = project Map.! name pkg
+
+  let pkgsHere = Map.elems $ flip Map.mapWithKey project \name (ComponentType ver _ _ _ _) -> Pkg name ver (Directory $ Local $ Text.pack path) [] False False
+  includeDirs <- fmap fst <$> traverse (\(Version name constraint) -> resolvePackage name lts constraint pkgsHere env) deps
 
   let include = ((path </>) . Text.unpack <$> srcDirs) <> includeDirs
       srcDirs' = (path </>) . Text.unpack <$> srcDirs

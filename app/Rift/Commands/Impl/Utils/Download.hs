@@ -54,7 +54,7 @@ import System.IO.Temp (withSystemTempDirectory)
 import qualified Text.URI as URI
 import Turtle (empty, procStrictWithErr)
 
-resolvePackage :: (?logLevel :: Int, MonadIO m, MonadHttp m, MonadMask m) => Text -> LTSVersion -> VersionConstraint -> [Package] -> Environment -> m (FilePath, Package)
+resolvePackage :: (?logLevel :: Int, MonadIO m, MonadHttp m, MonadMask m) => Text -> LTSVersion -> VersionConstraint -> [Package] -> Environment -> m (FilePath, Package, Bool)
 resolvePackage name lts (constraintExpr, versionConstraint) extra env = do
   ltsDir <- ltsPath (riftCache env) lts
 
@@ -62,7 +62,9 @@ resolvePackage name lts (constraintExpr, versionConstraint) extra env = do
     Nothing -> liftIO $ throwIO $ LTSNotFound lts
     Just ltsDir -> do
       Snapshot _ _ packageSet <- liftIO (inputFile auto (setDhallPath (ltsDir </> "lts")) :: IO Snapshot)
-      let packages = filter (\(Pkg n _ _ _ _ _) -> n == name) (extra <> packageSet)
+      let pkgs = filter (\(Pkg n _ _ _ _ _) -> n == name) packageSet
+          extras = filter (\(Pkg n _ _ _ _ _) -> n == name) extra
+      let packages = pkgs <> extras
 
       case sortBy (flip compare `on` version) packages of
         [] -> do
@@ -89,7 +91,7 @@ resolvePackage name lts (constraintExpr, versionConstraint) extra env = do
 
                 let pkg = head candidates2
                     pkgPath = packagePath pkg (ltsDir </> "sources")
-                pure (pkgPath, pkg)
+                pure (pkgPath, pkg, pkg `elem` extras)
               else do
                 when (length candidates3 /= length candidates2) do
                   Logger.warn $ "Ignoring deprecated sources for the package '" <> name <> "'"
@@ -99,19 +101,19 @@ resolvePackage name lts (constraintExpr, versionConstraint) extra env = do
 
                 let pkg = head candidates3
                     pkgPath = packagePath pkg (ltsDir </> "sources")
-                pure (pkgPath, pkg)
+                pure (pkgPath, pkg, pkg `elem` extras)
 
-fetchPackageTo' :: (?logLevel :: Int, MonadIO m, MonadHttp m, MonadMask m) => LTSVersion -> FilePath -> FilePath -> Bool -> Bool -> Environment -> FilePath -> Package -> m (Acyclic.AdjacencyMap (FilePath, Package))
-fetchPackageTo' lts ltsDir extraDepDir force infoCached env pkgPath pkg =
-  Acyclic.toAcyclic <$> fetchPackageTo Cyclic.empty lts ltsDir extraDepDir force infoCached env pkgPath pkg >>= \case
+fetchPackageTo' :: (?logLevel :: Int, MonadIO m, MonadHttp m, MonadMask m) => LTSVersion -> FilePath -> FilePath -> Bool -> Bool -> Bool -> Environment -> FilePath -> Package -> m (Acyclic.AdjacencyMap (FilePath, Package))
+fetchPackageTo' lts ltsDir extraDepDir force infoCached isExtra env pkgPath pkg =
+  Acyclic.toAcyclic <$> fetchPackageTo Cyclic.empty lts ltsDir extraDepDir force infoCached isExtra env pkgPath pkg >>= \case
     Just graph -> pure graph
     Nothing -> undefined
 
-fetchPackageTo :: (?logLevel :: Int, MonadIO m, MonadHttp m, MonadMask m) => Cyclic.AdjacencyMap (FilePath, Package) -> LTSVersion -> FilePath -> FilePath -> Bool -> Bool -> Environment -> FilePath -> Package -> m (Cyclic.AdjacencyMap (FilePath, Package))
-fetchPackageTo depGraph lts ltsDir extraDepDir force infoCached env pkgPath pkg@Pkg {..} = do
+fetchPackageTo :: (?logLevel :: Int, MonadIO m, MonadHttp m, MonadMask m) => Cyclic.AdjacencyMap (FilePath, Package) -> LTSVersion -> FilePath -> FilePath -> Bool -> Bool -> Bool -> Environment -> FilePath -> Package -> m (Cyclic.AdjacencyMap (FilePath, Package))
+fetchPackageTo depGraph lts ltsDir extraDepDir force infoCached isExtra env pkgPath pkg@Pkg {..} = do
   checkCycles (pkgPath, pkg) depGraph
 
-  let pkgDir = packagePath pkg ltsDir
+  let pkgDir = packagePath pkg (if isExtra then extraDepDir else ltsDir)
   (graph', _, components, _) <- do
     pathExists <- liftIO $ doesDirectoryExist pkgDir
     let isDirDep = case src of
@@ -155,8 +157,8 @@ fetchPackageTo depGraph lts ltsDir extraDepDir force infoCached env pkgPath pkg@
   where
     resolveDep :: (MonadIO m, MonadHttp m, MonadMask m) => (FilePath, Package) -> LTSVersion -> FilePath -> FilePath -> Bool -> [Package] -> Environment -> PackageDependency -> Cyclic.AdjacencyMap (FilePath, Package) -> m (Cyclic.AdjacencyMap (FilePath, Package))
     resolveDep thisPkg lts ltsDir extraDepDir force extra env (Version name constraint) depGraph = do
-      (pkgPath, pkg) <- resolvePackage name lts constraint extra env
-      fetchPackageTo (depGraph `Cyclic.overlay` Cyclic.edge thisPkg (pkgPath, pkg)) lts ltsDir extraDepDir force infoCached env pkgPath pkg
+      (pkgPath, pkg, isExtra) <- resolvePackage name lts constraint extra env
+      fetchPackageTo (depGraph `Cyclic.overlay` Cyclic.edge thisPkg (pkgPath, pkg)) lts ltsDir extraDepDir force infoCached isExtra env pkgPath pkg
     {-# INLINE resolveDep #-}
 
     checkCycles :: (MonadIO m) => (FilePath, Package) -> Cyclic.AdjacencyMap (FilePath, Package) -> m ()
@@ -173,7 +175,7 @@ checkConsistency name ver cs = case Map.lookup name cs of
   Nothing -> liftIO $ throwIO $ NoSuchComponent name
   Just (ComponentType ver2 _ _ _ _) -> do
     when (ver /= ver2) do
-      liftIO $ throwIO $ InconsistentComponentVersions ver ver2
+      liftIO $ throwIO $ InconsistentComponentVersions name ver ver2
 
 downloadAndExtract :: (?logLevel :: Int, MonadIO m, MonadHttp m, MonadMask m) => FilePath -> Source -> Environment -> m (FilePath, ProjectType, Configuration)
 downloadAndExtract dir dep env =

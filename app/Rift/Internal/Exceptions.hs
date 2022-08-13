@@ -23,6 +23,7 @@ data RiftException
   | UnknownProjectTemplate
       (Maybe Text)
   | InconsistentComponentVersions
+      Text
       SemVer
       SemVer
   | NoSuchPackage
@@ -69,8 +70,14 @@ instance Show RiftException where
   show (UnknownProjectTemplate Nothing) = undefined
   show (UnknownProjectTemplate (Just t)) =
     "'" <> Text.unpack t <> "' is not a known template. Run 'rift project template list' to see a list of valid template names."
-  show (InconsistentComponentVersions ver1 ver2) =
-    "Incoherent versions were specified.\nComponent was expected to have version " <> show ver1 <> " but version " <> show ver2 <> " was found."
+  show (InconsistentComponentVersions name ver1 ver2) =
+    "Incoherent versions were specified.\nComponent '"
+      <> Text.unpack name
+      <> "' was expected to have version "
+      <> show ver1
+      <> " but version "
+      <> show ver2
+      <> " was found."
   show (NoSuchPackage name lts) =
     "Package '" <> Text.unpack name <> "' not found in LTS '" <> show lts <> "'."
   show (BrokenVersionConstraint name constraintExpr) =

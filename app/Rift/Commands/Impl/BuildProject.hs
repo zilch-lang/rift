@@ -30,10 +30,11 @@ import Dhall (auto, inputFile)
 import Network.HTTP.Req (MonadHttp)
 import Rift.Commands.Impl.Utils.Config (readPackageDhall, readRiftDhall)
 import Rift.Commands.Impl.Utils.Directory (listDirectoryRecursive)
-import Rift.Commands.Impl.Utils.Download (fetchPackageTo, resolvePackage)
-import Rift.Commands.Impl.Utils.Paths (dotRift, ltsPath, riftDhall)
+import Rift.Commands.Impl.Utils.Download (checkConsistency, downloadAndExtract, fetchPackageTo, resolvePackage)
+import Rift.Commands.Impl.Utils.ExtraDependencyCacheManager (insertExtraDependency)
+import Rift.Commands.Impl.Utils.Paths (dotRift, ltsPath, riftDhall, sourcePath)
 import Rift.Config.Configuration (Configuration (..), systemGZCPath, useSystemGZC)
-import Rift.Config.Package (Package (..))
+import Rift.Config.Package (ExtraPackage (..), Package (..))
 import Rift.Config.PackageSet (LTSVersion)
 import Rift.Config.Project (ComponentType (..))
 import Rift.Config.Source (Location (Local), Source (Directory))
@@ -42,7 +43,7 @@ import Rift.Environment (Environment, riftCache)
 import Rift.Internal.Exceptions (RiftException (..))
 import qualified Rift.Logger as Logger
 import qualified System.Console.ANSI as ANSI
-import System.Directory (getCurrentDirectory)
+import System.Directory (doesDirectoryExist, getCurrentDirectory)
 import System.FilePath (dropExtension, makeRelative, splitDirectories, takeExtension, (</>))
 import System.IO (stdout)
 
@@ -92,6 +93,8 @@ buildProjectCommand dryRun nbCores dirtyFiles componentsToBuild env = do
 
   -- TODO: fetch the GZC compiler from the LTS information (see 'ltsDir </> "lts" </> "packages" </> "set" <.> "dhall"') into the cache
   -- and keep the path to it in memory to compile packages later
+  --
+  -- where do we download it from?
 
   componentsToBuild <- case componentsToBuild of
     [] -> do
@@ -101,12 +104,29 @@ buildProjectCommand dryRun nbCores dirtyFiles componentsToBuild env = do
 
   -- TODO: fetch and build all extra dependencies, we may need them
   -- but beware of dependency cycles!
+  --
+  -- extra dependencies cannot depend on /this/ local cache, so there's no need to fear dependency cyclesi (at least they won't happen with local packages)
+  extraPackages <- forM extraDeps \(ExtraPkg name ver src) -> do
+    let srcPath = sourcePath (riftCache env </> "extra-deps") src
+
+    fileExists <- liftIO $ doesDirectoryExist srcPath
+    pkgPath <-
+      if not fileExists
+        then do
+          (pkgPath, project, _) <- downloadAndExtract srcPath src env
+          checkConsistency name ver project
+          insertExtraDependency name ver pkgPath src env
+          pure pkgPath
+        else do
+          pure srcPath
+
+    pure (pkgPath, Pkg name ver src [] False False)
 
   cwd <- liftIO getCurrentDirectory
   let additionalPkgs = Map.elems $
         flip Map.mapWithKey components \name (ComponentType ver _ _ _ _) -> (cwd, Pkg name ver (Directory $ Local $ Text.pack cwd) [] False False)
 
-  void $ flip Map.traverseWithKey componentsToBuild (buildComponent lts ltsDir dryRun dirtyFiles additionalPkgs env)
+  void $ flip Map.traverseWithKey componentsToBuild (buildComponent lts ltsDir dryRun dirtyFiles (additionalPkgs <> extraPackages) env)
 
   pure ()
 
@@ -128,8 +148,8 @@ buildComponent lts ltsDir dryRun dirtyFiles additional env name (ComponentType v
   !graph <-
     foldrM
       ( \(Version name versionConstraint) graph -> do
-          (depPkgPath, depPkg) <- resolvePackage name lts versionConstraint (snd <$> additional) env
-          fetchPackageTo (graph `Cyclic.overlay` Cyclic.edge (cwd, thisPkg') (depPkgPath, depPkg)) lts (ltsDir </> "sources") (riftCache env </> "extra-deps") False False env depPkgPath depPkg
+          (depPkgPath, depPkg, isExtra) <- resolvePackage name lts versionConstraint (snd <$> additional) env
+          fetchPackageTo (graph `Cyclic.overlay` Cyclic.edge (cwd, thisPkg') (depPkgPath, depPkg)) lts (ltsDir </> "sources") (riftCache env </> "extra-deps") False False isExtra env depPkgPath depPkg
       )
       Cyclic.empty
       deps
@@ -211,14 +231,17 @@ buildPackage path pkg dryRun isCurrentProject lts env = do
   -- when considering components, assume that:
   -- - all the dependencies were already built, because of our topsort (although this is unreliable)
 
+  ltsDir <- fromJust <$> ltsPath (riftCache env) lts
+
   project <- readPackageDhall path
   configuration <- readRiftDhall path env
   let ComponentType _ deps srcDirs kind gzcFlags = project Map.! name pkg
 
   let pkgsHere = Map.elems $ flip Map.mapWithKey project \name (ComponentType ver _ _ _ _) -> Pkg name ver (Directory $ Local $ Text.pack path) [] False False
-  includeDirs <- fmap fst <$> traverse (\(Version name constraint) -> resolvePackage name lts constraint pkgsHere env) deps
+  includeDirs <- fmap fst3 <$> traverse (\(Version name constraint) -> resolvePackage name lts constraint pkgsHere env) deps
 
-  let include = ((path </>) . Text.unpack <$> srcDirs) <> includeDirs
+  let include = ((path </>) . Text.unpack <$> srcDirs) <> ((</> "interfaces") . dotRift <$> includeDirs)
+      -- include the .rift/interfaces directory, as it contains all the .zci files we are interested in
       srcDirs' = (path </>) . Text.unpack <$> srcDirs
   files <-
     liftIO $
@@ -232,7 +255,10 @@ buildPackage path pkg dryRun isCurrentProject lts env = do
   Logger.debug $ "Building modules " <> Text.pack (show $ Text.pack <$> modules) <> " of package " <> name pkg
 
   let command =
-        [if useSystemGZC configuration then fromMaybe "gzc" $ systemGZCPath configuration else undefined]
+        [ if useSystemGZC configuration
+            then fromMaybe "gzc" $ systemGZCPath configuration
+            else Text.pack $ ltsDir </> "bin" </> "gzc"
+        ]
           <> gzcFlags
           <> (Text.pack <$> modules)
           <> ("-I" : intersperse "-I" (Text.pack <$> include))
@@ -243,3 +269,5 @@ buildPackage path pkg dryRun isCurrentProject lts env = do
       liftIO $ putStrLn $ unwords $ Text.unpack <$> command
       pure ()
     else undefined
+  where
+    fst3 ~(a, _, _) = a

@@ -22,8 +22,9 @@ fetchPackageCommand :: (?logLevel :: Int, MonadIO m, MonadHttp m, MonadMask m) =
 fetchPackageCommand name versionConstraint ltsName force env = do
   let lts = fromMaybe Unstable (ltsName >>= readLTSVersion)
   constr <- fromMaybe trueConstraint <$> traverse parseVersionConstraint versionConstraint
-  (pkgPath, pkg) <- resolvePackage name lts constr [] env
+  (pkgPath, pkg, isExtra) <- resolvePackage name lts constr [] env
+  --             ^^^^^^^ this should always be 'False' here
 
   ltsDir <- fromJust <$> ltsPath (riftCache env) lts
 
-  void $ fetchPackageTo' lts (ltsDir </> "sources") (riftCache env </> "extra-deps") force True env pkgPath pkg
+  void $ fetchPackageTo' lts (ltsDir </> "sources") (riftCache env </> "extra-deps") force True isExtra env pkgPath pkg

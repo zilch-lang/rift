@@ -161,37 +161,44 @@ projectDhallTemplate :: Text -> Template -> Text
 projectDhallTemplate projectName projectTemplate =
   let v100 = Dhall.App (Dhall.App (Dhall.App (Dhall.Field (Dhall.Var $ Dhall.V "Version" 0) (Dhall.FieldSelection Nothing "v" Nothing)) (Dhall.NaturalLit 1)) (Dhall.NaturalLit 0)) (Dhall.NaturalLit 0)
 
-      componentTemplate = case projectTemplate of
+      component = case projectTemplate of
         Executable ->
-          Dhall.ListLit
-            Nothing
-            [ Dhall.RecordCompletion
-                (Dhall.Var $ Dhall.V "Component" 0)
-                ( Dhall.RecordLit
-                    [ ("name", Dhall.RecordField Nothing (Dhall.TextLit $ Dhall.Chunks [] projectName) Nothing Nothing),
-                      ("version", Dhall.RecordField Nothing v100 Nothing Nothing),
-                      ("source-dirs", Dhall.RecordField Nothing (Dhall.ListLit Nothing [Dhall.TextLit $ Dhall.Chunks [] "src"]) Nothing Nothing),
-                      ("kind", Dhall.RecordField Nothing (Dhall.Field (Dhall.Field (Dhall.Var $ Dhall.V "Component" 0) (Dhall.FieldSelection Nothing "Kind" Nothing)) (Dhall.FieldSelection Nothing "Executable" Nothing)) Nothing Nothing)
-                    ]
-                )
+          Dhall.RecordLit $
+            [ ( projectName,
+                Dhall.RecordField
+                  Nothing
+                  ( Dhall.RecordCompletion
+                      (Dhall.Var $ Dhall.V "Component" 0)
+                      ( Dhall.RecordLit
+                          [ ("version", Dhall.RecordField Nothing v100 Nothing Nothing),
+                            ("source-dirs", Dhall.RecordField Nothing (Dhall.ListLit Nothing [Dhall.TextLit $ Dhall.Chunks [] "src"]) Nothing Nothing),
+                            ("kind", Dhall.RecordField Nothing (Dhall.Field (Dhall.Field (Dhall.Var $ Dhall.V "Component" 0) (Dhall.FieldSelection Nothing "Kind" Nothing)) (Dhall.FieldSelection Nothing "Executable" Nothing)) Nothing Nothing)
+                          ]
+                      )
+                  )
+                  Nothing
+                  Nothing
+              )
             ]
         Library ->
-          Dhall.ListLit
-            Nothing
-            [ Dhall.RecordCompletion
-                (Dhall.Var $ Dhall.V "Component" 0)
-                ( Dhall.RecordLit
-                    [ ("name", Dhall.RecordField Nothing (Dhall.TextLit $ Dhall.Chunks [] projectName) Nothing Nothing),
-                      ("version", Dhall.RecordField Nothing v100 Nothing Nothing),
-                      ("source-dirs", Dhall.RecordField Nothing (Dhall.ListLit Nothing [Dhall.TextLit $ Dhall.Chunks [] "src"]) Nothing Nothing),
-                      ("kind", Dhall.RecordField Nothing (Dhall.Field (Dhall.Field (Dhall.Var $ Dhall.V "Component" 0) (Dhall.FieldSelection Nothing "Kind" Nothing)) (Dhall.FieldSelection Nothing "Library" Nothing)) Nothing Nothing)
-                    ]
-                )
+          Dhall.RecordLit $
+            [ ( projectName,
+                Dhall.RecordField
+                  Nothing
+                  ( Dhall.RecordCompletion
+                      (Dhall.Var $ Dhall.V "Component" 0)
+                      ( Dhall.RecordLit
+                          [ ("version", Dhall.RecordField Nothing v100 Nothing Nothing),
+                            ("source-dirs", Dhall.RecordField Nothing (Dhall.ListLit Nothing [Dhall.TextLit $ Dhall.Chunks [] "src"]) Nothing Nothing),
+                            ("kind", Dhall.RecordField Nothing (Dhall.Field (Dhall.Field (Dhall.Var $ Dhall.V "Component" 0) (Dhall.FieldSelection Nothing "Kind" Nothing)) (Dhall.FieldSelection Nothing "Library" Nothing)) Nothing Nothing)
+                          ]
+                      )
+                  )
+                  Nothing
+                  Nothing
+              )
             ]
-        Empty ->
-          Dhall.ListLit
-            (Just $ Dhall.App Dhall.List $ Dhall.Field (Dhall.Var $ Dhall.V "Component" 0) (Dhall.FieldSelection Nothing "Type" Nothing))
-            []
+        Empty -> Dhall.RecordLit []
         _ -> Dhall.Assert $ Dhall.BoolLit False
    in pretty $
         Dhall.Let
@@ -202,4 +209,4 @@ projectDhallTemplate projectName projectTemplate =
               (Dhall.Binding Nothing "Version" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "Version" Nothing))
               $ Dhall.Let
                 (Dhall.Binding Nothing "Component" Nothing Nothing Nothing $ Dhall.Field (Dhall.Var $ Dhall.V "Cfg" 0) (Dhall.FieldSelection Nothing "Component" Nothing))
-                $ componentTemplate
+                $ component

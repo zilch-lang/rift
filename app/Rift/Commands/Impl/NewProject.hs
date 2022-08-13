@@ -52,7 +52,7 @@ newProjectCommand path name template force Env {..} = do
 
   Logger.info $ "Initializing empty project in directory '" <> Text.pack path <> "'"
 
-  (exit, out, err) <- procStrictWithErr (Text.pack git) ["tag", "-l", "-n", "1", "--color", "never"] empty
+  (exit, out, err) <- procStrictWithErr (Text.pack git) ["-C", Text.pack (riftCache </> "pkgs"), "tag", "-l", "-n", "1", "--color", "never"] empty
   unless (exit == ExitSuccess) do
     liftIO $ throwIO $ ExternalCommandError "'git' process returned non 0 exit code." out err
 

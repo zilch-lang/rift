@@ -30,6 +30,7 @@ executable rift
       Rift.CLI.Global
       Rift.CLI.Package
       Rift.CLI.Package.Fetch
+      Rift.CLI.Package.Purge
       Rift.CLI.Package.PurgeLTS
       Rift.CLI.Package.Search
       Rift.CLI.Package.Update
@@ -47,6 +48,7 @@ executable rift
       Rift.Commands.Impl.NewProject
       Rift.Commands.Impl.PrintPaths
       Rift.Commands.Impl.PurgeLTS
+      Rift.Commands.Impl.PurgePackage
       Rift.Commands.Impl.QueryPaths
       Rift.Commands.Impl.SearchPackage
       Rift.Commands.Impl.UpdatePackageSet
@@ -56,6 +58,7 @@ executable rift
       Rift.Commands.Impl.Utils.Download
       Rift.Commands.Impl.Utils.ExtraDependencyCacheManager
       Rift.Commands.Impl.Utils.GitTags
+      Rift.Commands.Impl.Utils.LTS
       Rift.Commands.Impl.Utils.Paths
       Rift.Config.Configuration
       Rift.Config.ExtraDependencyCache

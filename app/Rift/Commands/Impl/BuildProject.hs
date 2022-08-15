@@ -36,7 +36,7 @@ import Rift.Commands.Impl.Utils.Paths (dotRift, ltsPath, riftDhall, sourcePath)
 import Rift.Config.Configuration (Configuration (..), systemGZCPath, useSystemGZC)
 import Rift.Config.Package (ExtraPackage (..), Package (..))
 import Rift.Config.PackageSet (LTSVersion)
-import Rift.Config.Project (ComponentType (..))
+import Rift.Config.Project (ComponentKind (..), ComponentType (..))
 import Rift.Config.Source (Location (Local), Source (Directory))
 import Rift.Config.Version (PackageDependency (..))
 import Rift.Environment (Environment, riftCache)
@@ -44,8 +44,11 @@ import Rift.Internal.Exceptions (RiftException (..))
 import qualified Rift.Logger as Logger
 import qualified System.Console.ANSI as ANSI
 import System.Directory (doesDirectoryExist, getCurrentDirectory)
-import System.FilePath (dropExtension, makeRelative, splitDirectories, takeExtension, (</>))
+import System.Exit (ExitCode (..))
+import System.FilePath (dropExtension, makeRelative, splitDirectories, takeExtension, (<.>), (</>))
 import System.IO (stdout)
+import System.Info (os)
+import Turtle (empty, proc)
 
 -- | Building the project happens in multiple steps:
 --
@@ -171,7 +174,7 @@ buildComponent lts ltsDir dryRun dirtyFiles additional env name (ComponentType v
   let total = length sorted + 1
       tot = show total
   forM_ sorted \(path, pkg) -> do
-    buildPackage' nbOutOf tot False path pkg
+    buildPackage' nbOutOf tot path pkg
 
     liftIO $ modifyIORef nbOutOf (+ 1)
 
@@ -183,11 +186,11 @@ buildComponent lts ltsDir dryRun dirtyFiles additional env name (ComponentType v
 
   let rebuildCurrent = rebuild || dirtyFiles
   when rebuildCurrent do
-    uncurry (buildPackage' nbOutOf tot True) thisPkg
+    uncurry (buildPackage' nbOutOf tot) thisPkg
 
   pure ()
   where
-    buildPackage' nbOutOf tot isThisPackage path pkg@(Pkg name _ _ _ _ _) = do
+    buildPackage' nbOutOf tot path pkg@(Pkg name _ _ _ _ _) = do
       liftIO do
         nbOutOf' <- readIORef nbOutOf
 
@@ -200,7 +203,7 @@ buildComponent lts ltsDir dryRun dirtyFiles additional env name (ComponentType v
         ANSI.hSetSGR stdout [ANSI.Reset]
         Text.hPutStrLn stdout $ "..."
 
-      buildPackage path pkg dryRun isThisPackage lts env
+      buildPackage path pkg dryRun lts env
 
     pad prefixChar max txt = Text.replicate (max - Text.length txt) (Text.singleton prefixChar) <> txt
 
@@ -226,8 +229,8 @@ buildComponent lts ltsDir dryRun dirtyFiles additional env name (ComponentType v
 
     checkModified (path, pkg) = pure True -- TODO
 
-buildPackage :: (MonadIO m, ?logLevel :: Int, MonadHttp m, MonadMask m) => FilePath -> Package -> Bool -> Bool -> LTSVersion -> Environment -> m ()
-buildPackage path pkg dryRun isCurrentProject lts env = do
+buildPackage :: (MonadIO m, ?logLevel :: Int, MonadHttp m, MonadMask m) => FilePath -> Package -> Bool -> LTSVersion -> Environment -> m ()
+buildPackage path pkg dryRun lts env = do
   -- when considering components, assume that:
   -- - all the dependencies were already built, because of our topsort (although this is unreliable)
 
@@ -254,20 +257,32 @@ buildPackage path pkg dryRun isCurrentProject lts env = do
 
   Logger.debug $ "Building modules " <> Text.pack (show $ Text.pack <$> modules) <> " of package " <> name pkg
 
-  let command =
+  let command@(gzc : args) =
         [ if useSystemGZC configuration
             then fromMaybe "gzc" $ systemGZCPath configuration
             else Text.pack $ ltsDir </> "bin" </> "gzc"
         ]
-          <> gzcFlags
           <> (Text.pack <$> modules)
+          <> gzcFlags
           <> ("-I" : intersperse "-I" (Text.pack <$> include))
           <> ["-ddump-dir=" <> Text.pack (dotRift path), "--keep-zco", "--keep-zci"]
+          <> case kind of
+            Executable -> ["-o", Text.pack $ dotRift path </> "bin" </> makeExe (Text.unpack $ name pkg)]
+            Library -> ["--no-main"]
 
   if dryRun
     then do
       liftIO $ putStrLn $ unwords $ Text.unpack <$> command
       pure ()
-    else undefined
+    else do
+      Logger.debug $ "Executing command '" <> Text.unwords command <> "'"
+
+      exit <- proc gzc args empty
+      when (exit /= ExitSuccess) do
+        liftIO $ throwIO CommandFailed
   where
     fst3 ~(a, _, _) = a
+
+    makeExe f = case os of
+      "mingw32" -> f <.> "exe"
+      _ -> f

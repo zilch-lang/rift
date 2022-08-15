@@ -57,6 +57,7 @@ data RiftException
       Text
   | InvalidSemanticVersion
       String
+  | CommandFailed
 
 instance Show RiftException where
   show (LTSNotFound lts) =
@@ -128,5 +129,7 @@ instance Show RiftException where
     "URIs with non-HTTP(S) schemes are not supported (while trying to fetch file '" <> Text.unpack uri <> "')."
   show (InvalidSemanticVersion megaparsecError) =
     "Invalid semantic version:\n" <> megaparsecError
+  show CommandFailed =
+    "External command failed. Check its standard error for more information."
 
 instance Exception RiftException

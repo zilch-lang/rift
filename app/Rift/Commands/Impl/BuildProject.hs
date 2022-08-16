@@ -12,8 +12,9 @@ module Rift.Commands.Impl.BuildProject where
 import qualified Algebra.Graph.Acyclic.AdjacencyMap as Acyclic
 import qualified Algebra.Graph.AdjacencyMap as Cyclic
 import Control.Exception (throwIO)
-import Control.Monad (forM, forM_, void, when)
+import Control.Monad (forM, forM_, unless, void, when)
 import Control.Monad.Catch (MonadMask)
+import Control.Monad.Extra (whenM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Bifunctor (first, second)
 import Data.Foldable (fold, foldrM)
@@ -26,13 +27,13 @@ import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
-import Dhall (auto, inputFile)
+import Data.Time (getCurrentTime)
 import Network.HTTP.Req (MonadHttp)
 import Rift.Commands.Impl.Utils.Config (readPackageDhall, readRiftDhall)
 import Rift.Commands.Impl.Utils.Directory (listDirectoryRecursive)
 import Rift.Commands.Impl.Utils.Download (checkConsistency, downloadAndExtract, fetchPackageTo, resolvePackage)
 import Rift.Commands.Impl.Utils.ExtraDependencyCacheManager (insertExtraDependency)
-import Rift.Commands.Impl.Utils.Paths (dotRift, ltsPath, riftDhall, sourcePath)
+import Rift.Commands.Impl.Utils.Paths (dotRift, ltsPath, sourcePath)
 import Rift.Config.Configuration (Configuration (..), systemGZCPath, useSystemGZC)
 import Rift.Config.Package (ExtraPackage (..), Package (..))
 import Rift.Config.PackageSet (LTSVersion)
@@ -43,11 +44,12 @@ import Rift.Environment (Environment, riftCache)
 import Rift.Internal.Exceptions (RiftException (..))
 import qualified Rift.Logger as Logger
 import qualified System.Console.ANSI as ANSI
-import System.Directory (doesDirectoryExist, getCurrentDirectory)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, getCurrentDirectory, getModificationTime)
 import System.Exit (ExitCode (..))
 import System.FilePath (dropExtension, makeRelative, splitDirectories, takeExtension, (<.>), (</>))
 import System.IO (stdout)
 import System.Info (os)
+import Text.Read (readMaybe)
 import Turtle (empty, proc)
 
 -- | Building the project happens in multiple steps:
@@ -227,7 +229,28 @@ buildComponent lts ltsDir dryRun dirtyFiles additional env name (ComponentType v
             then graph
             else Cyclic.removeVertex root graph
 
-    checkModified (path, pkg) = pure True -- TODO
+    checkModified (path, Pkg name _ _ _ _ _) = do
+      -- read @path </> ".rift" </> "last-build"@ if it exists
+      --
+      -- compare all the files' timestamps inside the @source-dirs@ field
+      -- as well as the @project.dhall@ and @rift.dhall@
+      --
+      -- if any is before the timestamp read at first, do not rebuild
+      ComponentType _ _ srcDirs _ _ <- (Map.! name) <$> readPackageDhall path
+      let srcDirs' = (path </>) . Text.unpack <$> srcDirs
+      files <- liftIO $ mconcat <$> forM srcDirs' listDirectoryRecursive
+      let files' = filter ((== ".zc") . takeExtension) files
+
+      now <- liftIO getCurrentTime
+      fileExists <- liftIO $ doesFileExist (dotRift path </> "last-build")
+      lastBuild <-
+        if fileExists
+          then liftIO $ fromMaybe now . readMaybe <$> readFile (dotRift path </> "last-build")
+          else pure now
+
+      -- we also test directories in case we delete files from them between two builds
+      lastModified <- liftIO $ maximum <$> forM (files' <> srcDirs') getModificationTime
+      pure $ lastBuild == now || lastModified > lastBuild
 
 buildPackage :: (MonadIO m, ?logLevel :: Int, MonadHttp m, MonadMask m) => FilePath -> Package -> Bool -> LTSVersion -> Environment -> m ()
 buildPackage path pkg dryRun lts env = do
@@ -270,16 +293,23 @@ buildPackage path pkg dryRun lts env = do
             Executable -> ["-o", Text.pack $ dotRift path </> "bin" </> makeExe (Text.unpack $ name pkg)]
             Library -> ["--no-main"]
 
-  if dryRun
-    then do
-      liftIO $ putStrLn $ unwords $ Text.unpack <$> command
-      pure ()
-    else do
-      Logger.debug $ "Executing command '" <> Text.unwords command <> "'"
+  unless (null modules) do
+    -- when there are modules to compile, do so
+    if dryRun
+      then do
+        liftIO $ putStrLn $ unwords $ Text.unpack <$> command
+        pure ()
+      else do
+        Logger.debug $ "Executing command '" <> Text.unwords command <> "'"
 
-      exit <- proc gzc args empty
-      when (exit /= ExitSuccess) do
-        liftIO $ throwIO CommandFailed
+        exit <- proc gzc args empty
+        when (exit /= ExitSuccess) do
+          liftIO $ throwIO CommandFailed
+
+  -- and lastly update the last successful build timestamp
+  whenM (liftIO $ not <$> doesDirectoryExist (dotRift path)) do
+    liftIO $ createDirectoryIfMissing True (dotRift path)
+  liftIO $ getCurrentTime >>= writeFile (dotRift path </> "last-build") . show
   where
     fst3 ~(a, _, _) = a
 

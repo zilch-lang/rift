@@ -288,7 +288,7 @@ buildPackage path pkg dryRun lts env = do
           <> (Text.pack <$> modules)
           <> gzcFlags
           <> ("-I" : intersperse "-I" (Text.pack <$> include))
-          <> ["-ddump-dir=" <> Text.pack (dotRift path), "--keep-zco", "--keep-zci"]
+          <> ["-ddump-dir=" <> Text.pack (dotRift path), "--keep-zco", "--keep-zci", "--build-progress"]
           <> case kind of
             Executable -> ["-o", Text.pack $ dotRift path </> "bin" </> makeExe (Text.unpack $ name pkg)]
             Library -> ["--no-main"]
